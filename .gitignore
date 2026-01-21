@@ -35,3 +35,5 @@ vendor/
 # Temp files
 *.log
 *.tmp
+
+example/

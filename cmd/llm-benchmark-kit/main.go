@@ -6,11 +6,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/config"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/provider"
 	_ "github.com/brianxiadong/llm-benchmark-kit/pkg/provider/openai" // Register OpenAI provider
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/runner"
+	"github.com/brianxiadong/llm-benchmark-kit/pkg/summarizer"
 )
 
 var (
@@ -50,19 +54,27 @@ func main() {
 	// Provider
 	flag.StringVar(&cfg.ProviderType, "provider", cfg.ProviderType, "Provider type: openai, aliyun, custom")
 
+	// Meeting Summary Mode
+	transcriptFile := flag.String("transcript-file", "", "Path to meeting transcript file (enables summary mode)")
+	chunkSize := flag.Int("chunk-size", 8000, "Maximum characters per chunk for transcript processing")
+	meetingTime := flag.String("meeting-time", "", "Meeting time for the summary header")
+
 	// Version flag
 	showVersion := flag.Bool("version", false, "Show version information")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "LLM Benchmark Kit - High-Performance LLM Benchmarking Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Modes:\n")
+		fmt.Fprintf(os.Stderr, "  Benchmark Mode: Run performance tests against LLM API\n")
+		fmt.Fprintf(os.Stderr, "  Summary Mode:   Summarize meeting transcripts (use -transcript-file)\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
-		fmt.Fprintf(os.Stderr, "  # Basic benchmark with OpenAI-compatible API\n")
+		fmt.Fprintf(os.Stderr, "  # Benchmark mode\n")
 		fmt.Fprintf(os.Stderr, "  %s -url https://api.openai.com/v1/chat/completions -model gpt-4 -token $OPENAI_API_KEY\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "  # Benchmark with custom concurrency and request count\n")
-		fmt.Fprintf(os.Stderr, "  %s -url https://api.example.com/v1/chat/completions -model llama3 -concurrency 10 -total-requests 100\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Summary mode\n")
+		fmt.Fprintf(os.Stderr, "  %s -url http://localhost:8000/v1/chat/completions -model qwen -transcript-file meeting.txt\n\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -80,12 +92,67 @@ func main() {
 		log.Fatal("Error: -model is required")
 	}
 
+	// Check if running in summary mode
+	if *transcriptFile != "" {
+		runSummaryMode(cfg, *transcriptFile, *chunkSize, *meetingTime)
+		return
+	}
+
+	// Benchmark mode
+	runBenchmarkMode(cfg)
+}
+
+func runSummaryMode(cfg *config.GlobalConfig, transcriptFile string, chunkSize int, meetingTime string) {
+	// Set default meeting time if not provided
+	if meetingTime == "" {
+		meetingTime = time.Now().Format("2006-01-02 15:04")
+	}
+
+	// Auto-generate output directory
+	modelName := cfg.ModelName
+	modelName = strings.ReplaceAll(modelName, "/", "_")
+	modelName = strings.ReplaceAll(modelName, ":", "_")
+	timestamp := time.Now().Format("20060102_150405")
+	outputDir := filepath.Join("output", fmt.Sprintf("summary_%s_%s", modelName, timestamp))
+
+	fmt.Printf("Meeting Summary Mode\n")
+	fmt.Printf("====================\n")
+	fmt.Printf("URL:          %s\n", cfg.URL)
+	fmt.Printf("Model:        %s\n", cfg.ModelName)
+	fmt.Printf("Transcript:   %s\n", transcriptFile)
+	fmt.Printf("Chunk Size:   %d chars\n", chunkSize)
+	fmt.Printf("Meeting Time: %s\n", meetingTime)
+	fmt.Printf("Output:       %s\n", outputDir)
+	fmt.Println()
+
+	sum := summarizer.NewSummarizer(cfg, chunkSize, meetingTime)
+	_, err := sum.Run(transcriptFile, outputDir)
+	if err != nil {
+		log.Fatalf("Summarization failed: %v", err)
+	}
+
+	fmt.Printf("\n✅ Meeting summary complete!\n")
+	fmt.Printf("   Final summary:    %s/meeting_summary.md\n", outputDir)
+	fmt.Printf("   Intermediate:     %s/intermediate/\n", outputDir)
+}
+
+func runBenchmarkMode(cfg *config.GlobalConfig) {
 	// Validate token mode
 	switch cfg.TokenMode {
 	case "usage", "chars", "disabled":
 		// Valid
 	default:
 		log.Fatalf("Error: invalid token-mode '%s', must be one of: usage, chars, disabled", cfg.TokenMode)
+	}
+
+	// Auto-generate output directory if using default
+	if cfg.OutputDir == "./output" {
+		modelName := cfg.ModelName
+		modelName = strings.ReplaceAll(modelName, "/", "_")
+		modelName = strings.ReplaceAll(modelName, ":", "_")
+		modelName = strings.ReplaceAll(modelName, " ", "_")
+		timestamp := time.Now().Format("20060102_150405")
+		cfg.OutputDir = filepath.Join("output", fmt.Sprintf("%s_%s", modelName, timestamp))
 	}
 
 	// Get the provider

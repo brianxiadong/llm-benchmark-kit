@@ -76,13 +76,43 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
 
 ## 指标说明
 
+### 核心指标详解
+
+| 指标 | 全称 | 说明 |
+|------|------|------|
+| **TTFT** | Time To First Token | 从请求发出到收到第一个内容 token 的时间。反映模型响应速度，用户体验的关键指标。 |
+| **Latency** | 总延迟 | 从请求发出到完整响应结束的时间。包含 TTFT + 生成时间。 |
+| **Throughput** | 吞吐量 | 每秒生成的 token 数（tokens/s）或字符数（chars/s）。反映模型生成效率。 |
+| **RPS** | Requests Per Second | 每秒成功完成的请求数。反映服务整体处理能力。 |
+| **Success Rate** | 成功率 | 成功请求数 / 总请求数。反映服务稳定性。 |
+
+### 百分位数指标
+
 | 指标 | 说明 |
 |------|------|
-| TTFT | 首个内容帧到达时间（Time To First Token） |
-| Latency | 请求总延迟 |
-| P50/P95/P99 | 对应百分位数 |
-| RPS | 每秒成功请求数 |
-| Throughput | Token/字符 吞吐量 |
+| **P50** (中位数) | 50% 的请求在此时间内完成。代表典型用户体验。 |
+| **P95** | 95% 的请求在此时间内完成。用于评估大多数用户的体验。 |
+| **P99** | 99% 的请求在此时间内完成。用于发现长尾延迟问题。 |
+
+### 指标解读示例
+
+```
+Avg TTFT:     84.67 ms   → 平均 85ms 开始输出，用户感知快
+Avg Latency:  1890.70 ms → 平均 1.9 秒完成生成
+P50 TTFT:     77 ms      → 一半请求在 77ms 内开始输出
+P95 TTFT:     122 ms     → 95% 请求在 122ms 内开始输出
+P99 TTFT:     137 ms     → 99% 请求在 137ms 内开始输出（无严重长尾）
+RPS:          4.77       → 服务每秒处理约 4.8 个请求
+Throughput:   501.28/s   → 每秒生成约 500 个 token
+```
+
+### Token 统计模式
+
+| 模式 | 说明 |
+|------|------|
+| `usage` | 使用 API 返回的 `usage` 字段统计（最准确） |
+| `chars` | 按字符数统计，当 API 不返回 token 数时使用 |
+| `disabled` | 不统计 token，只关注延迟指标 |
 
 ## 构建
 

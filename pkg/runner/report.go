@@ -89,6 +89,10 @@ func (r *Runner) generateReport(results []result.RequestResult, wallTime time.Du
 		case "usage":
 			if totalTokens > 0 {
 				report.TokenThroughput = float64(totalTokens) / wallTime.Seconds()
+			} else if totalChars > 0 {
+				// Fallback to chars when API doesn't return usage
+				report.TokenMode = "chars"
+				report.TokenThroughput = float64(totalChars) / wallTime.Seconds()
 			}
 		case "chars":
 			report.TokenThroughput = float64(totalChars) / wallTime.Seconds()
