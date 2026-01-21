@@ -59,6 +59,9 @@ func main() {
 	chunkSize := flag.Int("chunk-size", 8000, "Maximum characters per chunk for transcript processing")
 	meetingTime := flag.String("meeting-time", "", "Meeting time for the summary header")
 
+	// Debug Options
+	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging of LLM requests and responses")
+
 	// Version flag
 	showVersion := flag.Bool("version", false, "Show version information")
 

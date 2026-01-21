@@ -141,6 +141,20 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string) (string, error) {
 		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Verbose logging: request
+	if s.cfg.Verbose {
+		fmt.Println("\n" + strings.Repeat("=", 80))
+		fmt.Println("[VERBOSE] LLM REQUEST")
+		fmt.Println(strings.Repeat("-", 80))
+		fmt.Printf("URL: %s\n", s.cfg.URL)
+		fmt.Printf("Model: %s\n", s.cfg.ModelName)
+		fmt.Println("\n[System Prompt]:")
+		fmt.Println(sysPrompt)
+		fmt.Println("\n[User Prompt]:")
+		fmt.Println(userPrompt)
+		fmt.Println(strings.Repeat("=", 80))
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.TimeoutSec)*time.Second)
 	defer cancel()
 
@@ -179,7 +193,22 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string) (string, error) {
 		return "", fmt.Errorf("no response choices")
 	}
 
-	return chatResp.Choices[0].Message.Content, nil
+	content := chatResp.Choices[0].Message.Content
+
+	// Verbose logging: response
+	if s.cfg.Verbose {
+		fmt.Println("\n" + strings.Repeat("=", 80))
+		fmt.Println("[VERBOSE] LLM RESPONSE")
+		fmt.Println(strings.Repeat("-", 80))
+		fmt.Printf("Status: %d\n", resp.StatusCode)
+		fmt.Printf("Tokens: prompt=%d, completion=%d, total=%d\n",
+			chatResp.Usage.PromptTokens, chatResp.Usage.CompletionTokens, chatResp.Usage.TotalTokens)
+		fmt.Println("\n[Content]:")
+		fmt.Println(content)
+		fmt.Println(strings.Repeat("=", 80))
+	}
+
+	return content, nil
 }
 
 func (s *Summarizer) createClient() *http.Client {

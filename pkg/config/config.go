@@ -30,6 +30,9 @@ type GlobalConfig struct {
 
 	// Provider Selection
 	ProviderType string // Provider type: openai, aliyun, custom
+
+	// Debug Options
+	Verbose bool // Enable verbose logging of requests/responses
 }
 
 // DefaultConfig returns a configuration with sensible defaults.

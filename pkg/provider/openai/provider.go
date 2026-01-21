@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/config"
@@ -89,6 +90,21 @@ func (p *Provider) StreamChat(ctx context.Context, cfg *config.GlobalConfig, inp
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
+	// Verbose logging: request
+	if cfg.Verbose {
+		fmt.Println("\n" + strings.Repeat("=", 80))
+		fmt.Println("[VERBOSE] LLM STREAM REQUEST")
+		fmt.Println(strings.Repeat("-", 80))
+		fmt.Printf("URL: %s\n", cfg.URL)
+		fmt.Printf("Model: %s\n", cfg.ModelName)
+		fmt.Printf("MaxTokens: %d\n", maxTokens)
+		fmt.Println("\n[Messages]:")
+		for i, msg := range messages {
+			fmt.Printf("  [%d] %s: %s\n", i, msg.Role, truncateString(msg.Content, 200))
+		}
+		fmt.Println(strings.Repeat("=", 80))
+	}
+
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", cfg.URL, bytes.NewReader(jsonBody))
 	if err != nil {
@@ -120,9 +136,17 @@ func (p *Provider) StreamChat(ctx context.Context, cfg *config.GlobalConfig, inp
 	events := make(chan provider.StreamEvent, 100)
 
 	// Start goroutine to parse SSE
-	go p.parseStream(resp.Body, events)
+	go p.parseStream(resp.Body, events, cfg.Verbose)
 
 	return events, nil
+}
+
+// truncateString truncates a string to maxLen characters.
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 func (p *Provider) createClient(cfg *config.GlobalConfig) *http.Client {
@@ -145,16 +169,26 @@ func (p *Provider) createClient(cfg *config.GlobalConfig) *http.Client {
 	}
 }
 
-func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.StreamEvent) {
+func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.StreamEvent, verbose bool) {
 	defer close(events)
 	defer body.Close()
 
 	parser := sse.NewParser(body)
 	var lastUsage *provider.TokenUsage
+	var fullContent strings.Builder // Accumulate content for verbose logging
 
 	for {
 		event, err := parser.Next()
 		if err == io.EOF {
+			// Verbose logging: response
+			if verbose && fullContent.Len() > 0 {
+				fmt.Println("\n" + strings.Repeat("=", 80))
+				fmt.Println("[VERBOSE] LLM STREAM RESPONSE")
+				fmt.Println(strings.Repeat("-", 80))
+				fmt.Printf("[Content] (%d chars):\n", fullContent.Len())
+				fmt.Println(truncateString(fullContent.String(), 500))
+				fmt.Println(strings.Repeat("=", 80))
+			}
 			// Send end event if we haven't received one
 			events <- provider.StreamEvent{Type: provider.EventEnd}
 			return
@@ -169,6 +203,15 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 
 		// Check for [DONE] signal
 		if event.Data == "[DONE]" {
+			// Verbose logging: response
+			if verbose && fullContent.Len() > 0 {
+				fmt.Println("\n" + strings.Repeat("=", 80))
+				fmt.Println("[VERBOSE] LLM STREAM RESPONSE")
+				fmt.Println(strings.Repeat("-", 80))
+				fmt.Printf("[Content] (%d chars):\n", fullContent.Len())
+				fmt.Println(truncateString(fullContent.String(), 500))
+				fmt.Println(strings.Repeat("=", 80))
+			}
 			if lastUsage != nil {
 				events <- provider.StreamEvent{
 					Type:  provider.EventUsage,
@@ -197,6 +240,10 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 		// Check for content
 		for _, choice := range resp.Choices {
 			if choice.Delta.Content != "" {
+				// Accumulate for verbose logging
+				if verbose {
+					fullContent.WriteString(choice.Delta.Content)
+				}
 				events <- provider.StreamEvent{
 					Type: provider.EventContent,
 					Raw:  event.Data,
@@ -206,6 +253,15 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 
 			// Check for finish_reason
 			if choice.FinishReason != nil && *choice.FinishReason != "" {
+				// Verbose logging: response
+				if verbose && fullContent.Len() > 0 {
+					fmt.Println("\n" + strings.Repeat("=", 80))
+					fmt.Println("[VERBOSE] LLM STREAM RESPONSE")
+					fmt.Println(strings.Repeat("-", 80))
+					fmt.Printf("[Content] (%d chars):\n", fullContent.Len())
+					fmt.Println(truncateString(fullContent.String(), 500))
+					fmt.Println(strings.Repeat("=", 80))
+				}
 				if lastUsage != nil {
 					events <- provider.StreamEvent{
 						Type:  provider.EventUsage,
