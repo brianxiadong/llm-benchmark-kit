@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Benchmark Report - {{.Report.Model}}</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --bg-card: #334155;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --accent: #3b82f6;
+            --success: #22c55e;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .metric-card {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+        }
+        
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        
+        .metric-value.success {
+            color: var(--success);
+        }
+        
+        .metric-value.error {
+            color: var(--error);
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .chart-card {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        
+        .chart-title {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+        
+        .chart-container {
+            height: 350px;
+        }
+        
+        .percentile-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        
+        .percentile-table th,
+        .percentile-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--bg-card);
+        }
+        
+        .percentile-table th {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .errors-section {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+        }
+        
+        .error-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem;
+            background: var(--bg-card);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .error-key {
+            color: var(--error);
+            font-family: monospace;
+        }
+        
+        .error-count {
+            font-weight: 700;
+        }
+        
+        .sample-section {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 12px;
+        }
+        
+        .sample-content {
+            background: var(--bg-card);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 200px;
+            overflow-y: auto;
+            color: var(--text-secondary);
+        }
+        
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        @media (max-width: 768px) {
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 1.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LLM Benchmark Report</h1>
+            <p class="subtitle">
+                Provider: <strong>{{.Report.Provider}}</strong> | 
+                Model: <strong>{{.Report.Model}}</strong> | 
+                {{.Report.StartedAt}}
+            </p>
+        </header>
+        
+        <section class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Requests</div>
+                <div class="metric-value">{{.Report.TotalRequests}}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Success Rate</div>
+                <div class="metric-value success" id="success-rate"></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg TTFT</div>
+                <div class="metric-value" id="avg-ttft"></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Latency</div>
+                <div class="metric-value" id="avg-latency"></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">RPS</div>
+                <div class="metric-value" id="rps"></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Throughput ({{.Report.TokenMode}})</div>
+                <div class="metric-value" id="throughput"></div>
+            </div>
+        </section>
+        
+        <section class="charts-grid">
+            <div class="chart-card">
+                <h3 class="chart-title">TTFT Distribution</h3>
+                <div class="chart-container" id="ttft-chart"></div>
+                <table class="percentile-table">
+                    <tr>
+                        <th>Percentile</th>
+                        <th>P50</th>
+                        <th>P95</th>
+                        <th>P99</th>
+                    </tr>
+                    <tr>
+                        <td>TTFT</td>
+                        <td>{{.Report.P50TTFTMs}} ms</td>
+                        <td>{{.Report.P95TTFTMs}} ms</td>
+                        <td>{{.Report.P99TTFTMs}} ms</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="chart-card">
+                <h3 class="chart-title">Latency Distribution</h3>
+                <div class="chart-container" id="latency-chart"></div>
+                <table class="percentile-table">
+                    <tr>
+                        <th>Percentile</th>
+                        <th>P50</th>
+                        <th>P95</th>
+                        <th>P99</th>
+                    </tr>
+                    <tr>
+                        <td>Latency</td>
+                        <td>{{.Report.P50LatencyMs}} ms</td>
+                        <td>{{.Report.P95LatencyMs}} ms</td>
+                        <td>{{.Report.P99LatencyMs}} ms</td>
+                    </tr>
+                </table>
+            </div>
+        </section>
+        
+        <section class="charts-grid">
+            <div class="chart-card">
+                <h3 class="chart-title">Success / Failure Distribution</h3>
+                <div class="chart-container" id="success-chart"></div>
+            </div>
+            {{if .Report.ErrorsTopN}}
+            <div class="chart-card">
+                <h3 class="chart-title">Top Errors</h3>
+                <div class="errors-section" style="background: transparent; padding: 0;">
+                    {{range .Report.ErrorsTopN}}
+                    <div class="error-item">
+                        <span class="error-key">{{.Key}}</span>
+                        <span class="error-count">{{.Count}}</span>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </section>
+        
+        {{if or .Report.FirstContentRaw .Report.FinalFrameRaw}}
+        <section class="sample-section">
+            <h3 class="chart-title">Sample Data</h3>
+            {{if .Report.FirstContentRaw}}
+            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">First Content Frame</h4>
+            <div class="sample-content">{{.Report.FirstContentRaw}}</div>
+            {{end}}
+            {{if .Report.FinalFrameRaw}}
+            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">Final Frame</h4>
+            <div class="sample-content">{{.Report.FinalFrameRaw}}</div>
+            {{end}}
+        </section>
+        {{end}}
+        
+        <footer>
+            <p>Generated by LLM Benchmark Kit | Wall Time: {{.Report.WallTimeMs}} ms</p>
+        </footer>
+    </div>
+    
+    <script>
+        const report = {{.ReportJSON}};
+        
+        // Format numbers
+        document.getElementById('success-rate').textContent = (report.success_rate * 100).toFixed(2) + '%';
+        document.getElementById('avg-ttft').textContent = report.avg_ttft_ms.toFixed(2) + ' ms';
+        document.getElementById('avg-latency').textContent = report.avg_latency_ms.toFixed(2) + ' ms';
+        document.getElementById('rps').textContent = report.rps.toFixed(2);
+        document.getElementById('throughput').textContent = report.token_throughput.toFixed(2) + '/s';
+        
+        // Create histogram bins
+        function createHistogram(data, numBins = 20) {
+            if (!data || data.length === 0) return { bins: [], counts: [] };
+            
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const binWidth = (max - min) / numBins || 1;
+            
+            const bins = [];
+            const counts = new Array(numBins).fill(0);
+            
+            for (let i = 0; i < numBins; i++) {
+                bins.push(Math.round(min + binWidth * (i + 0.5)));
+            }
+            
+            data.forEach(value => {
+                const binIndex = Math.min(Math.floor((value - min) / binWidth), numBins - 1);
+                counts[binIndex]++;
+            });
+            
+            return { bins, counts };
+        }
+        
+        // TTFT Chart
+        const ttftChart = echarts.init(document.getElementById('ttft-chart'));
+        const ttftHist = createHistogram(report.ttft_distribution_ms || []);
+        ttftChart.setOption({
+            tooltip: { trigger: 'axis' },
+            xAxis: {
+                type: 'category',
+                data: ttftHist.bins.map(b => b + ' ms'),
+                axisLabel: { color: '#94a3b8' },
+                axisLine: { lineStyle: { color: '#334155' } }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: { color: '#94a3b8' },
+                splitLine: { lineStyle: { color: '#334155' } }
+            },
+            series: [{
+                data: ttftHist.counts,
+                type: 'bar',
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#60a5fa' },
+                        { offset: 1, color: '#3b82f6' }
+                    ])
+                },
+                markLine: {
+                    data: [
+                        { xAxis: ttftHist.bins.findIndex(b => b >= report.p50_ttft_ms), name: 'P50' },
+                        { xAxis: ttftHist.bins.findIndex(b => b >= report.p95_ttft_ms), name: 'P95' },
+                        { xAxis: ttftHist.bins.findIndex(b => b >= report.p99_ttft_ms), name: 'P99' }
+                    ].filter(d => d.xAxis >= 0),
+                    lineStyle: { color: '#f59e0b' },
+                    label: { color: '#f59e0b' }
+                }
+            }]
+        });
+        
+        // Latency Chart
+        const latencyChart = echarts.init(document.getElementById('latency-chart'));
+        const latencyHist = createHistogram(report.latency_distribution_ms || []);
+        latencyChart.setOption({
+            tooltip: { trigger: 'axis' },
+            xAxis: {
+                type: 'category',
+                data: latencyHist.bins.map(b => b + ' ms'),
+                axisLabel: { color: '#94a3b8' },
+                axisLine: { lineStyle: { color: '#334155' } }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: { color: '#94a3b8' },
+                splitLine: { lineStyle: { color: '#334155' } }
+            },
+            series: [{
+                data: latencyHist.counts,
+                type: 'bar',
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#a78bfa' },
+                        { offset: 1, color: '#8b5cf6' }
+                    ])
+                },
+                markLine: {
+                    data: [
+                        { xAxis: latencyHist.bins.findIndex(b => b >= report.p50_latency_ms), name: 'P50' },
+                        { xAxis: latencyHist.bins.findIndex(b => b >= report.p95_latency_ms), name: 'P95' },
+                        { xAxis: latencyHist.bins.findIndex(b => b >= report.p99_latency_ms), name: 'P99' }
+                    ].filter(d => d.xAxis >= 0),
+                    lineStyle: { color: '#f59e0b' },
+                    label: { color: '#f59e0b' }
+                }
+            }]
+        });
+        
+        // Success/Failure Pie Chart
+        const successChart = echarts.init(document.getElementById('success-chart'));
+        successChart.setOption({
+            tooltip: { trigger: 'item' },
+            legend: {
+                orient: 'horizontal',
+                bottom: 10,
+                textStyle: { color: '#94a3b8' }
+            },
+            series: [{
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                itemStyle: {
+                    borderRadius: 10,
+                    borderColor: '#1e293b',
+                    borderWidth: 2
+                },
+                label: {
+                    show: true,
+                    color: '#f1f5f9'
+                },
+                data: [
+                    { value: report.success, name: 'Success', itemStyle: { color: '#22c55e' } },
+                    { value: report.failure, name: 'Failure', itemStyle: { color: '#ef4444' } }
+                ]
+            }]
+        });
+        
+        // Resize charts on window resize
+        window.addEventListener('resize', () => {
+            ttftChart.resize();
+            latencyChart.resize();
+            successChart.resize();
+        });
+    </script>
+</body>
+</html>
