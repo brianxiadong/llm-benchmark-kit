@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/config"
+	"github.com/brianxiadong/llm-benchmark-kit/pkg/embedded"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/fulltest"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/provider"
 	_ "github.com/brianxiadong/llm-benchmark-kit/pkg/provider/openai" // Register OpenAI provider
@@ -240,8 +241,21 @@ func runFullTest(cfg *config.GlobalConfig) {
 		execDir := filepath.Dir(execPath)
 		transcriptFile = filepath.Join(execDir, "..", "example", "text.txt")
 		if _, err := os.Stat(transcriptFile); os.IsNotExist(err) {
-			log.Printf("Warning: transcript file not found, summary test will be skipped")
-			transcriptFile = ""
+			// Use embedded transcript - write to temp file
+			embeddedData := embedded.GetTranscriptSample()
+			if len(embeddedData) > 0 {
+				tmpFile := filepath.Join(os.TempDir(), "llm-benchmark-transcript.txt")
+				if err := os.WriteFile(tmpFile, embeddedData, 0644); err == nil {
+					transcriptFile = tmpFile
+					fmt.Println("   Using embedded transcript sample")
+				} else {
+					log.Printf("Warning: failed to write embedded transcript: %v", err)
+					transcriptFile = ""
+				}
+			} else {
+				log.Printf("Warning: transcript file not found, summary test will be skipped")
+				transcriptFile = ""
+			}
 		}
 	}
 
