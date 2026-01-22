@@ -136,8 +136,8 @@ func (r *Runner) Run() (*FullTestReport, error) {
 
 	// Use larger max_tokens for full-test (thinking models need more tokens)
 	originalMaxTokens := r.cfg.MaxTokens
-	if r.cfg.MaxTokens < 1024 {
-		r.cfg.MaxTokens = 1024
+	if r.cfg.MaxTokens < 2048 {
+		r.cfg.MaxTokens = 2048
 		fmt.Printf("📝 Note: Increased max_tokens to %d for full-test (thinking models)\n\n", r.cfg.MaxTokens)
 	}
 
@@ -147,8 +147,8 @@ func (r *Runner) Run() (*FullTestReport, error) {
 	r.printPhaseResults(report.FirstCallResults)
 
 	// 1.2 Concurrent Test
-	fmt.Println("📌 1.2 Concurrent Test (并发测试, 3并发)")
-	report.ConcurrentResults = r.runConcurrentTest(3, 3)
+	fmt.Println("📌 1.2 Concurrent Test (并发测试, 2并发)")
+	report.ConcurrentResults = r.runConcurrentTest(2, 2)
 	r.printPhaseResults(report.ConcurrentResults)
 
 	// 1.3 Multi-turn Test
