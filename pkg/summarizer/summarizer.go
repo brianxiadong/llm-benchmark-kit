@@ -28,6 +28,8 @@ type ChunkMetrics struct {
 	ProcessingTime   time.Duration `json:"processing_time"`
 	StartTime        time.Time     `json:"start_time"`
 	EndTime          time.Time     `json:"end_time"`
+	Overflowed       bool          `json:"overflowed"`        // Whether this chunk caused overflow
+	OverflowError    string        `json:"overflow_error,omitempty"` // Error message if overflowed
 }
 
 // SummaryMetrics holds overall performance metrics for the summarization.
@@ -43,6 +45,9 @@ type SummaryMetrics struct {
 	ChunkMetrics          []ChunkMetrics `json:"chunk_metrics"`
 	StartTime             time.Time      `json:"start_time"`
 	EndTime               time.Time      `json:"end_time"`
+	OverflowDetected      bool           `json:"overflow_detected"`           // Whether overflow was detected
+	OverflowAtChunk       int            `json:"overflow_at_chunk,omitempty"` // Chunk number where overflow occurred
+	OverflowAtTokens      int            `json:"overflow_at_tokens,omitempty"` // Total tokens when overflow occurred
 }
 
 // Summarizer handles meeting transcript summarization.
@@ -132,6 +137,32 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 		// Call the LLM and collect metrics
 		response, chunkMetrics, err := s.chat(sysPrompt, userPrompt, i+1)
 		if err != nil {
+			// Check if it's an overflow error
+			if strings.Contains(strings.ToLower(err.Error()), "maximum context length") ||
+				strings.Contains(strings.ToLower(err.Error()), "context_length_exceeded") ||
+				strings.Contains(strings.ToLower(err.Error()), "token limit") ||
+				strings.Contains(strings.ToLower(err.Error()), "too many tokens") {
+				// Mark overflow in metrics
+				chunkMetrics.Overflowed = true
+				chunkMetrics.OverflowError = err.Error()
+				metrics.ChunkMetrics = append(metrics.ChunkMetrics, chunkMetrics)
+				metrics.OverflowDetected = true
+				metrics.OverflowAtChunk = i + 1
+				metrics.OverflowAtTokens = metrics.TotalTokens
+				
+				fmt.Printf("  ⚠️  Token overflow detected at chunk %d/%d (total tokens so far: %d)\n", 
+					i+1, len(chunks), metrics.TotalTokens)
+				fmt.Printf("  Error: %s\n", err.Error())
+				
+				// Use the current summary as the final result
+				if currentSummary == "" {
+					return "", fmt.Errorf("overflow on first chunk, cannot continue: %w", err)
+				}
+				
+				fmt.Printf("  Using last successful summary as final result\n")
+				break
+			}
+			// Other errors - fail immediately
 			return "", fmt.Errorf("failed to process chunk %d: %w", i+1, err)
 		}
 
@@ -288,11 +319,23 @@ func (s *Summarizer) savePerformanceReport(metrics *SummaryMetrics, outputDir st
 	sb.WriteString("# 会议总结性能报告\n\n")
 	sb.WriteString(fmt.Sprintf("**生成时间**: %s\n\n", time.Now().Format("2006-01-02 15:04:05")))
 
+	// Add overflow warning if detected
+	if metrics.OverflowDetected {
+		sb.WriteString("## ⚠️ Token 溢出警告\n\n")
+		sb.WriteString(fmt.Sprintf("在处理第 **%d** 个分片时检测到 token 溢出。\n", metrics.OverflowAtChunk))
+		sb.WriteString(fmt.Sprintf("溢出时累计 token 数量: **%d**\n\n", metrics.OverflowAtTokens))
+		sb.WriteString("总结已基于最后一次成功的结果生成。\n\n")
+		sb.WriteString("---\n\n")
+	}
+
 	sb.WriteString("## 总体指标\n\n")
 	sb.WriteString("| 指标 | 值 |\n")
 	sb.WriteString("|------|-----|\n")
 	sb.WriteString(fmt.Sprintf("| 模型名称 | %s |\n", metrics.ModelName))
 	sb.WriteString(fmt.Sprintf("| 总分片数 | %d |\n", metrics.TotalChunks))
+	if metrics.OverflowDetected {
+		sb.WriteString(fmt.Sprintf("| 成功处理分片数 | %d |\n", len(metrics.ChunkMetrics)))
+	}
 	sb.WriteString(fmt.Sprintf("| 总 Prompt Tokens | %d |\n", metrics.TotalPromptTokens))
 	sb.WriteString(fmt.Sprintf("| 总 Completion Tokens | %d |\n", metrics.TotalCompletionTokens))
 	sb.WriteString(fmt.Sprintf("| 总 Tokens | %d |\n", metrics.TotalTokens))
@@ -303,15 +346,30 @@ func (s *Summarizer) savePerformanceReport(metrics *SummaryMetrics, outputDir st
 	sb.WriteString(fmt.Sprintf("| 结束时间 | %s |\n", metrics.EndTime.Format("2006-01-02 15:04:05")))
 
 	sb.WriteString("\n## 分片详情\n\n")
-	sb.WriteString("| 分片 | Prompt Tokens | Completion Tokens | Total Tokens | 耗时(秒) |\n")
-	sb.WriteString("|------|---------------|-------------------|--------------|----------|\n")
+	sb.WriteString("| 分片 | Prompt Tokens | Completion Tokens | Total Tokens | 耗时(秒) | 状态 |\n")
+	sb.WriteString("|------|---------------|-------------------|--------------|----------|------|\n")
 	for _, chunk := range metrics.ChunkMetrics {
-		sb.WriteString(fmt.Sprintf("| %d | %d | %d | %d | %.2f |\n",
+		status := "✓"
+		if chunk.Overflowed {
+			status = "⚠️ 溢出"
+		}
+		sb.WriteString(fmt.Sprintf("| %d | %d | %d | %d | %.2f | %s |\n",
 			chunk.ChunkIndex,
 			chunk.PromptTokens,
 			chunk.CompletionTokens,
 			chunk.TotalTokens,
-			chunk.ProcessingTime.Seconds()))
+			chunk.ProcessingTime.Seconds(),
+			status))
+	}
+
+	// Add overflow details if any
+	if metrics.OverflowDetected {
+		sb.WriteString("\n## 溢出详情\n\n")
+		for _, chunk := range metrics.ChunkMetrics {
+			if chunk.Overflowed {
+				sb.WriteString(fmt.Sprintf("**分片 %d**: %s\n\n", chunk.ChunkIndex, chunk.OverflowError))
+			}
+		}
 	}
 
 	// Save markdown report

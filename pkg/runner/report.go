@@ -44,6 +44,9 @@ func (r *Runner) generateReport(results []result.RequestResult, wallTime time.Du
 			if report.FirstContentRaw == "" && res.FirstContentRaw != "" {
 				report.FirstContentRaw = res.FirstContentRaw
 			}
+			if len(report.MiddleFramesRaw) == 0 && len(res.MiddleFramesRaw) > 0 {
+				report.MiddleFramesRaw = res.MiddleFramesRaw
+			}
 			if report.FinalFrameRaw == "" && res.FinalFrameRaw != "" {
 				report.FinalFrameRaw = res.FinalFrameRaw
 			}

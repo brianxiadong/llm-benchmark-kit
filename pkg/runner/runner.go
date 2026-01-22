@@ -169,6 +169,7 @@ func (r *Runner) executeRequest(input workload.WorkloadInput) result.RequestResu
 	var totalContent string
 	gotFirstContent := false
 	var usage *provider.TokenUsage
+	contentFrameCount := 0
 
 	for event := range events {
 		switch event.Type {
@@ -176,9 +177,19 @@ func (r *Runner) executeRequest(input workload.WorkloadInput) result.RequestResu
 			if !gotFirstContent {
 				res.FirstContentTime = time.Now()
 				res.TTFT = res.FirstContentTime.Sub(res.StartTime)
-				res.FirstContentRaw = truncateString(event.Raw, MaxSampleSize)
 				gotFirstContent = true
 			}
+			
+			contentFrameCount++
+			// Capture first frame (frame 1)
+			if contentFrameCount == 1 {
+				res.FirstContentRaw = truncateString(event.Raw, MaxSampleSize)
+			}
+			// Capture middle frames (frames 2, 5, 10)
+			if contentFrameCount == 2 || contentFrameCount == 5 || contentFrameCount == 10 {
+				res.MiddleFramesRaw = append(res.MiddleFramesRaw, truncateString(event.Raw, MaxSampleSize))
+			}
+			
 			totalContent += event.Text
 
 		case provider.EventUsage:

@@ -36,10 +36,16 @@ func (p *Provider) Name() string {
 
 // ChatRequest represents the OpenAI chat completion request.
 type ChatRequest struct {
-	Model     string                 `json:"model"`
-	Messages  []workload.ChatMessage `json:"messages"`
-	MaxTokens int                    `json:"max_tokens,omitempty"`
-	Stream    bool                   `json:"stream"`
+	Model         string                 `json:"model"`
+	Messages      []workload.ChatMessage `json:"messages"`
+	MaxTokens     int                    `json:"max_tokens,omitempty"`
+	Stream        bool                   `json:"stream"`
+	StreamOptions *StreamOptions         `json:"stream_options,omitempty"`
+}
+
+// StreamOptions configures stream behavior.
+type StreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
 }
 
 // StreamChoice represents a choice in the streaming response.
@@ -83,6 +89,9 @@ func (p *Provider) StreamChat(ctx context.Context, cfg *config.GlobalConfig, inp
 		Messages:  messages,
 		MaxTokens: maxTokens,
 		Stream:    true,
+		StreamOptions: &StreamOptions{
+			IncludeUsage: true, // Request usage info in stream (for vLLM compatibility)
+		},
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -212,6 +221,7 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 				fmt.Println(truncateString(fullContent.String(), 500))
 				fmt.Println(strings.Repeat("=", 80))
 			}
+			// Send any remaining usage if not already sent
 			if lastUsage != nil {
 				events <- provider.StreamEvent{
 					Type:  provider.EventUsage,
@@ -229,12 +239,21 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 		var resp StreamResponse
 		if err := json.Unmarshal([]byte(event.Data), &resp); err != nil {
 			// Skip invalid JSON (might be partial or metadata)
+			if verbose {
+				fmt.Printf("[DEBUG] Failed to parse JSON: %v\nData: %s\n", err, truncateString(event.Data, 200))
+			}
 			continue
 		}
 
 		// Store usage for later (usually comes with final chunk or [DONE])
 		if resp.Usage != nil {
 			lastUsage = resp.Usage
+			// For vLLM, send usage event immediately when received
+			// (vLLM sends usage in a separate chunk with empty choices)
+			events <- provider.StreamEvent{
+				Type:  provider.EventUsage,
+				Usage: lastUsage,
+			}
 		}
 
 		// Check for content
@@ -251,29 +270,8 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 				}
 			}
 
-			// Check for finish_reason
-			if choice.FinishReason != nil && *choice.FinishReason != "" {
-				// Verbose logging: response
-				if verbose && fullContent.Len() > 0 {
-					fmt.Println("\n" + strings.Repeat("=", 80))
-					fmt.Println("[VERBOSE] LLM STREAM RESPONSE")
-					fmt.Println(strings.Repeat("-", 80))
-					fmt.Printf("[Content] (%d chars):\n", fullContent.Len())
-					fmt.Println(truncateString(fullContent.String(), 500))
-					fmt.Println(strings.Repeat("=", 80))
-				}
-				if lastUsage != nil {
-					events <- provider.StreamEvent{
-						Type:  provider.EventUsage,
-						Usage: lastUsage,
-					}
-				}
-				events <- provider.StreamEvent{
-					Type: provider.EventEnd,
-					Raw:  event.Data,
-				}
-				return
-			}
+			// Note: We no longer return on finish_reason because vLLM sends usage
+			// in a separate chunk AFTER finish_reason. We wait for [DONE] instead.
 		}
 	}
 }

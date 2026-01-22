@@ -302,12 +302,18 @@
             {{end}}
         </section>
         
-        {{if or .Report.FirstContentRaw .Report.FinalFrameRaw}}
+        {{if or .Report.FirstContentRaw .Report.MiddleFramesRaw .Report.FinalFrameRaw}}
         <section class="sample-section">
             <h3 class="chart-title">Sample Data</h3>
             {{if .Report.FirstContentRaw}}
-            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">First Content Frame</h4>
+            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">First Content Frame (Frame 1)</h4>
             <div class="sample-content">{{.Report.FirstContentRaw}}</div>
+            {{end}}
+            {{if .Report.MiddleFramesRaw}}
+            {{range $index, $frame := .Report.MiddleFramesRaw}}
+            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">Middle Frame {{if eq $index 0}}(Frame 2){{else if eq $index 1}}(Frame 5){{else if eq $index 2}}(Frame 10){{end}}</h4>
+            <div class="sample-content">{{$frame}}</div>
+            {{end}}
             {{end}}
             {{if .Report.FinalFrameRaw}}
             <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">Final Frame</h4>
@@ -332,43 +338,80 @@
         document.getElementById('throughput').textContent = report.token_throughput.toFixed(2) + '/s';
         
         // Create histogram bins
-        function createHistogram(data, numBins = 20) {
-            if (!data || data.length === 0) return { bins: [], counts: [] };
+        function createHistogram(data, numBins = 30) {
+            if (!data || data.length === 0) return { bins: [], counts: [], binEdges: [] };
             
             const min = Math.min(...data);
             const max = Math.max(...data);
-            const binWidth = (max - min) / numBins || 1;
+            
+            // Avoid division by zero
+            if (min === max) {
+                return { 
+                    bins: [min.toFixed(1)], 
+                    counts: [data.length],
+                    binEdges: [min]
+                };
+            }
+            
+            const binWidth = (max - min) / numBins;
             
             const bins = [];
+            const binEdges = [];
             const counts = new Array(numBins).fill(0);
             
             for (let i = 0; i < numBins; i++) {
-                bins.push(Math.round(min + binWidth * (i + 0.5)));
+                const edge = min + binWidth * i;
+                binEdges.push(edge);
+                bins.push((edge + binWidth / 2).toFixed(1));
             }
             
             data.forEach(value => {
-                const binIndex = Math.min(Math.floor((value - min) / binWidth), numBins - 1);
+                let binIndex = Math.floor((value - min) / binWidth);
+                // Handle edge case where value === max
+                if (binIndex >= numBins) binIndex = numBins - 1;
+                if (binIndex < 0) binIndex = 0;
                 counts[binIndex]++;
             });
             
-            return { bins, counts };
+            return { bins, counts, binEdges };
         }
         
         // TTFT Chart
         const ttftChart = echarts.init(document.getElementById('ttft-chart'));
         const ttftHist = createHistogram(report.ttft_distribution_ms || []);
         ttftChart.setOption({
-            tooltip: { trigger: 'axis' },
+            tooltip: { 
+                trigger: 'axis',
+                formatter: function(params) {
+                    const idx = params[0].dataIndex;
+                    const count = params[0].value;
+                    const edge = ttftHist.binEdges[idx];
+                    const nextEdge = idx + 1 < ttftHist.binEdges.length 
+                        ? ttftHist.binEdges[idx + 1] 
+                        : edge + (ttftHist.binEdges[1] - ttftHist.binEdges[0]);
+                    return `Range: ${edge.toFixed(1)} - ${nextEdge.toFixed(1)} ms<br/>Count: ${count}`;
+                }
+            },
             xAxis: {
                 type: 'category',
-                data: ttftHist.bins.map(b => b + ' ms'),
-                axisLabel: { color: '#94a3b8' },
-                axisLine: { lineStyle: { color: '#334155' } }
+                data: ttftHist.bins,
+                axisLabel: { 
+                    color: '#94a3b8',
+                    interval: Math.floor(ttftHist.bins.length / 10) || 0,
+                    rotate: 0
+                },
+                axisLine: { lineStyle: { color: '#334155' } },
+                name: 'TTFT (ms)',
+                nameLocation: 'middle',
+                nameGap: 30,
+                nameTextStyle: { color: '#94a3b8' }
             },
             yAxis: {
                 type: 'value',
                 axisLabel: { color: '#94a3b8' },
-                splitLine: { lineStyle: { color: '#334155' } }
+                splitLine: { lineStyle: { color: '#334155' } },
+                name: 'Count',
+                nameTextStyle: { color: '#94a3b8' }
             },
             series: [{
                 data: ttftHist.counts,
@@ -379,14 +422,14 @@
                         { offset: 1, color: '#3b82f6' }
                     ])
                 },
+                barWidth: '80%',
                 markLine: {
                     data: [
-                        { xAxis: ttftHist.bins.findIndex(b => b >= report.p50_ttft_ms), name: 'P50' },
-                        { xAxis: ttftHist.bins.findIndex(b => b >= report.p95_ttft_ms), name: 'P95' },
-                        { xAxis: ttftHist.bins.findIndex(b => b >= report.p99_ttft_ms), name: 'P99' }
+                        { xAxis: ttftHist.bins.findIndex(b => parseFloat(b) >= report.p50_ttft_ms), name: 'P50', lineStyle: { color: '#10b981' } },
+                        { xAxis: ttftHist.bins.findIndex(b => parseFloat(b) >= report.p95_ttft_ms), name: 'P95', lineStyle: { color: '#f59e0b' } },
+                        { xAxis: ttftHist.bins.findIndex(b => parseFloat(b) >= report.p99_ttft_ms), name: 'P99', lineStyle: { color: '#ef4444' } }
                     ].filter(d => d.xAxis >= 0),
-                    lineStyle: { color: '#f59e0b' },
-                    label: { color: '#f59e0b' }
+                    label: { formatter: '{b}' }
                 }
             }]
         });
@@ -395,17 +438,38 @@
         const latencyChart = echarts.init(document.getElementById('latency-chart'));
         const latencyHist = createHistogram(report.latency_distribution_ms || []);
         latencyChart.setOption({
-            tooltip: { trigger: 'axis' },
+            tooltip: { 
+                trigger: 'axis',
+                formatter: function(params) {
+                    const idx = params[0].dataIndex;
+                    const count = params[0].value;
+                    const edge = latencyHist.binEdges[idx];
+                    const nextEdge = idx + 1 < latencyHist.binEdges.length 
+                        ? latencyHist.binEdges[idx + 1] 
+                        : edge + (latencyHist.binEdges[1] - latencyHist.binEdges[0]);
+                    return `Range: ${edge.toFixed(1)} - ${nextEdge.toFixed(1)} ms<br/>Count: ${count}`;
+                }
+            },
             xAxis: {
                 type: 'category',
-                data: latencyHist.bins.map(b => b + ' ms'),
-                axisLabel: { color: '#94a3b8' },
-                axisLine: { lineStyle: { color: '#334155' } }
+                data: latencyHist.bins,
+                axisLabel: { 
+                    color: '#94a3b8',
+                    interval: Math.floor(latencyHist.bins.length / 10) || 0,
+                    rotate: 0
+                },
+                axisLine: { lineStyle: { color: '#334155' } },
+                name: 'Latency (ms)',
+                nameLocation: 'middle',
+                nameGap: 30,
+                nameTextStyle: { color: '#94a3b8' }
             },
             yAxis: {
                 type: 'value',
                 axisLabel: { color: '#94a3b8' },
-                splitLine: { lineStyle: { color: '#334155' } }
+                splitLine: { lineStyle: { color: '#334155' } },
+                name: 'Count',
+                nameTextStyle: { color: '#94a3b8' }
             },
             series: [{
                 data: latencyHist.counts,
@@ -416,14 +480,14 @@
                         { offset: 1, color: '#8b5cf6' }
                     ])
                 },
+                barWidth: '80%',
                 markLine: {
                     data: [
-                        { xAxis: latencyHist.bins.findIndex(b => b >= report.p50_latency_ms), name: 'P50' },
-                        { xAxis: latencyHist.bins.findIndex(b => b >= report.p95_latency_ms), name: 'P95' },
-                        { xAxis: latencyHist.bins.findIndex(b => b >= report.p99_latency_ms), name: 'P99' }
+                        { xAxis: latencyHist.bins.findIndex(b => parseFloat(b) >= report.p50_latency_ms), name: 'P50', lineStyle: { color: '#10b981' } },
+                        { xAxis: latencyHist.bins.findIndex(b => parseFloat(b) >= report.p95_latency_ms), name: 'P95', lineStyle: { color: '#f59e0b' } },
+                        { xAxis: latencyHist.bins.findIndex(b => parseFloat(b) >= report.p99_latency_ms), name: 'P99', lineStyle: { color: '#ef4444' } }
                     ].filter(d => d.xAxis >= 0),
-                    lineStyle: { color: '#f59e0b' },
-                    label: { color: '#f59e0b' }
+                    label: { formatter: '{b}' }
                 }
             }]
         });
