@@ -74,6 +74,7 @@ type FullTestReport struct {
 
 	// Phase 3: Summary
 	SummaryMetrics *summarizer.SummaryMetrics `json:"summary_metrics,omitempty"`
+	SummaryContent string                     `json:"summary_content,omitempty"`
 
 	// Output directories
 	BenchmarkOutputDir string `json:"benchmark_output_dir"`
@@ -197,11 +198,13 @@ func (r *Runner) Run() (*FullTestReport, error) {
 
 	if r.transcriptFile != "" {
 		summaryDir := filepath.Join(r.outputDir, "summary")
-		_, err := r.runSummary(summaryDir)
+		summaryContent, summaryMetrics, err := r.runSummary(summaryDir)
 		if err != nil {
 			fmt.Printf("⚠️  Summary test failed: %v\n", err)
 		} else {
 			report.SummaryOutputDir = summaryDir
+			report.SummaryMetrics = summaryMetrics
+			report.SummaryContent = summaryContent
 			fmt.Println("✅ Phase 3 Complete!")
 		}
 	} else {
@@ -536,9 +539,9 @@ func (r *Runner) printFunctionCallResult(result *FunctionCallResult) {
 
 // ========== Phase 3: Summary Test ==========
 
-func (r *Runner) runSummary(outputDir string) (*summarizer.SummaryMetrics, error) {
+func (r *Runner) runSummary(outputDir string) (string, *summarizer.SummaryMetrics, error) {
 	if _, err := os.Stat(r.transcriptFile); os.IsNotExist(err) {
-		return nil, fmt.Errorf("transcript file not found: %s", r.transcriptFile)
+		return "", nil, fmt.Errorf("transcript file not found: %s", r.transcriptFile)
 	}
 
 	fmt.Printf("   Transcript:   %s\n", r.transcriptFile)
@@ -548,12 +551,12 @@ func (r *Runner) runSummary(outputDir string) (*summarizer.SummaryMetrics, error
 	meetingTime := time.Now().Format("2006-01-02 15:04")
 	sum := summarizer.NewSummarizer(r.cfg, 8000, meetingTime)
 
-	_, err := sum.Run(r.transcriptFile, outputDir)
+	content, metrics, err := sum.RunWithMetrics(r.transcriptFile, outputDir)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	return nil, nil
+	return content, metrics, nil
 }
 
 // ========== Report Generation ==========
@@ -703,12 +706,6 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		}
 	}
 
-	// Summary status
-	summaryStatus := "⚠️ 跳过"
-	if report.SummaryOutputDir != "" {
-		summaryStatus = "✅ 完成"
-	}
-
 	// Calculate totals
 	totalTests := 0
 	totalSuccess := 0
@@ -732,6 +729,79 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 	}
 	if latencyCount > 0 {
 		avgLatency = latencySum / float64(latencyCount)
+	}
+
+	// Calculate success rate
+	successRate := 0.0
+	if totalTests > 0 {
+		successRate = float64(totalSuccess) / float64(totalTests) * 100
+	}
+
+	// Get benchmark report metrics if available
+	var rps, throughput, avgTTFT float64
+	var p50Latency, p95Latency, p99Latency int64
+	if report.BenchmarkReport != nil {
+		rps = report.BenchmarkReport.RPS
+		throughput = report.BenchmarkReport.TokenThroughput
+		avgTTFT = report.BenchmarkReport.AvgTTFTMs
+		p50Latency = report.BenchmarkReport.P50LatencyMs
+		p95Latency = report.BenchmarkReport.P95LatencyMs
+		p99Latency = report.BenchmarkReport.P99LatencyMs
+	}
+
+	// Summary status and details
+	summaryStatus := "⚠️ 跳过"
+	summaryDetails := "未提供会议记录文件"
+	if report.SummaryOutputDir != "" {
+		summaryStatus = "✅ 完成"
+		summaryDetails = fmt.Sprintf("详见 %s 目录", report.SummaryOutputDir)
+	}
+
+	// Prepare summary metrics HTML
+	summaryMetricsHTML := ""
+	if report.SummaryMetrics != nil {
+		m := report.SummaryMetrics
+		summaryMetricsHTML = fmt.Sprintf(`
+			<div class="phase-card">
+				<h3>性能指标</h3>
+				<table>
+					<thead><tr><th>指标</th><th>值</th></tr></thead>
+					<tbody>
+						<tr><td>总分片数</td><td>%d</td></tr>
+						<tr><td>总 Prompt Tokens</td><td>%d</td></tr>
+						<tr><td>总 Completion Tokens</td><td>%d</td></tr>
+						<tr><td>总 Tokens</td><td>%d</td></tr>
+						<tr><td>总处理时间</td><td>%.2f 秒</td></tr>
+						<tr><td>平均每分片耗时</td><td>%.2f 秒</td></tr>
+						<tr><td>Token 生成速度</td><td>%.2f tokens/秒</td></tr>
+					</tbody>
+				</table>
+			</div>`,
+			m.TotalChunks,
+			m.TotalPromptTokens,
+			m.TotalCompletionTokens,
+			m.TotalTokens,
+			m.TotalProcessingTime.Seconds(),
+			m.AverageTimePerChunk.Seconds(),
+			m.TokensPerSecond)
+	}
+
+	// Prepare summary content preview (escape HTML)
+	summaryContentPreview := ""
+	if report.SummaryContent != "" {
+		escapedContent := strings.ReplaceAll(report.SummaryContent, "&", "&amp;")
+		escapedContent = strings.ReplaceAll(escapedContent, "<", "&lt;")
+		escapedContent = strings.ReplaceAll(escapedContent, ">", "&gt;")
+		escapedContent = strings.ReplaceAll(escapedContent, "\"", "&quot;")
+		escapedContent = strings.ReplaceAll(escapedContent, "\n", "<br>")
+		summaryContentPreview = fmt.Sprintf(`
+			<div class="phase-card">
+				<h3>会议纪要预览</h3>
+				<details>
+					<summary style="cursor: pointer; color: #00d2ff; margin-bottom: 10px;">点击展开/收起</summary>
+					<div class="summary-content">%s</div>
+				</details>
+			</div>`, escapedContent)
 	}
 
 	// Generate phase result tables
@@ -855,7 +925,7 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
             color: #aaa;
         }
         .phase-summary strong { color: #00d2ff; }
-        .chart-container { background: #fff; border-radius: 12px; padding: 15px; }
+        .chart-container { background: #fff; border-radius: 12px; padding: 15px; height: 400px; }
         .fc-result {
             display: flex;
             align-items: center;
@@ -867,6 +937,15 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
         .fc-status { font-size: 1.5em; }
         .fc-details { color: #aaa; }
         .footer { text-align: center; padding: 20px; color: #666; font-size: 0.9em; }
+        .summary-content {
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-size: 0.9em;
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
@@ -887,12 +966,40 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
                 <div class="stat-label">成功/总测试</div>
             </div>
             <div class="stat-card">
+                <div class="stat-value">%.1f%%</div>
+                <div class="stat-label">成功率</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value">%.0f</div>
                 <div class="stat-label">平均延迟 (ms)</div>
             </div>
             <div class="stat-card">
+                <div class="stat-value">%.0f</div>
+                <div class="stat-label">平均 TTFT (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">%d</div>
+                <div class="stat-label">P50 延迟 (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">%d</div>
+                <div class="stat-label">P95 延迟 (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">%d</div>
+                <div class="stat-label">P99 延迟 (ms)</div>
+            </div>
+            <div class="stat-card">
                 <div class="stat-value">%d</div>
                 <div class="stat-label">总 Tokens</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">%.2f</div>
+                <div class="stat-label">RPS</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">%.1f</div>
+                <div class="stat-label">Token/s</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value">%s</div>
@@ -922,8 +1029,10 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
             <h2>📝 Phase 3: 会议纪要测试</h2>
             <div class="fc-result">
                 <div class="fc-status">%s</div>
-                <div class="fc-details">详见 summary/ 目录</div>
+                <div class="fc-details">%s</div>
             </div>
+            %s
+            %s
         </div>
 
         <div class="footer">
@@ -962,6 +1071,7 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
             yaxis: { title: '延迟 (ms)' },
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
+            height: 380,
         };
         
         Plotly.newPlot('latencyChart', [trace1, trace2, trace3], layout);
@@ -970,11 +1080,14 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 </html>`,
 		report.ModelName,
 		report.ModelName, report.APIURL, report.TotalDuration.Seconds(),
-		totalSuccess, totalTests, avgLatency, totalTokens, fcSupported,
+		totalSuccess, totalTests, successRate, avgLatency, avgTTFT,
+		p50Latency, p95Latency, p99Latency,
+		totalTokens, rps, throughput, fcSupported,
 		generatePhaseHTML(report.FirstCallResults, "1.1 冷启动测试 (First Call)"),
 		generatePhaseHTML(report.ConcurrentResults, "1.2 并发测试 (Concurrent)"),
 		generatePhaseHTML(report.MultiTurnResults, "1.3 多轮对话测试 (Multi-turn)"),
-		fcSupported, fcDetails, summaryStatus,
+		fcSupported, fcDetails,
+		summaryStatus, summaryDetails, summaryMetricsHTML, summaryContentPreview,
 		time.Now().Format("2006-01-02 15:04:05"),
 		string(firstCallNamesJSON), string(firstCallLatenciesJSON),
 		string(concurrentNamesJSON), string(concurrentLatenciesJSON),

@@ -97,6 +97,12 @@ type ChatResponse struct {
 
 // Run processes the transcript file and generates a meeting summary.
 func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
+	content, _, err := s.RunWithMetrics(transcriptFile, outputDir)
+	return content, err
+}
+
+// RunWithMetrics processes the transcript file and returns the summary along with performance metrics.
+func (s *Summarizer) RunWithMetrics(transcriptFile, outputDir string) (string, *SummaryMetrics, error) {
 	// Initialize metrics
 	metrics := &SummaryMetrics{
 		ModelName:    s.cfg.ModelName,
@@ -107,18 +113,18 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 	// Read the transcript file
 	content, err := os.ReadFile(transcriptFile)
 	if err != nil {
-		return "", fmt.Errorf("failed to read transcript file: %w", err)
+		return "", nil, fmt.Errorf("failed to read transcript file: %w", err)
 	}
 
 	// Create output directory
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create output directory: %w", err)
+		return "", nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	// Create intermediate results directory
 	intermediateDir := filepath.Join(outputDir, "intermediate")
 	if err := os.MkdirAll(intermediateDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create intermediate directory: %w", err)
+		return "", nil, fmt.Errorf("failed to create intermediate directory: %w", err)
 	}
 
 	// Split into chunks
@@ -156,14 +162,14 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 
 				// Use the current summary as the final result
 				if currentSummary == "" {
-					return "", fmt.Errorf("overflow on first chunk, cannot continue: %w", err)
+					return "", metrics, fmt.Errorf("overflow on first chunk, cannot continue: %w", err)
 				}
 
 				fmt.Printf("  Using last successful summary as final result\n")
 				break
 			}
 			// Other errors - fail immediately
-			return "", fmt.Errorf("failed to process chunk %d: %w", i+1, err)
+			return "", metrics, fmt.Errorf("failed to process chunk %d: %w", i+1, err)
 		}
 
 		// Update metrics
@@ -197,7 +203,7 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 	// Save final summary
 	finalPath := filepath.Join(outputDir, "meeting_summary.md")
 	if err := os.WriteFile(finalPath, []byte(currentSummary), 0644); err != nil {
-		return "", fmt.Errorf("failed to save final summary: %w", err)
+		return "", metrics, fmt.Errorf("failed to save final summary: %w", err)
 	}
 	fmt.Printf("\n✅ Final summary saved to: %s\n", finalPath)
 
@@ -206,7 +212,7 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 		fmt.Printf("  Warning: failed to save performance report: %v\n", err)
 	}
 
-	return currentSummary, nil
+	return currentSummary, metrics, nil
 }
 
 // chat sends a non-streaming chat request to the LLM and returns content with metrics.
