@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-LLM Benchmark Comparison Report Generator
+LLM FullTest Comparison Report Generator
 
-Scans output directory for benchmark results and generates a comparative
-HTML report with interactive charts.
+Scans output directory for fulltest results and generates a comparative
+HTML report with interactive charts for all three phases.
 """
 
 import argparse
 import json
 import os
+import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 
 try:
     import plotly.graph_objects as go
@@ -24,32 +25,49 @@ except ImportError:
 
 
 @dataclass
-class BenchmarkResult:
-    """Holds parsed benchmark results from a single test."""
+class FullTestResult:
+    """Holds parsed fulltest results from a single test."""
+    # Basic Info
     name: str  # Directory name / test identifier
-    model: str
-    started_at: str
-    wall_time_ms: int
-    total_requests: int
-    success: int
-    failure: int
-    success_rate: float
-    avg_ttft_ms: float
-    p50_ttft_ms: int
-    p95_ttft_ms: int
-    p99_ttft_ms: int
-    avg_latency_ms: float
-    p50_latency_ms: int
-    p95_latency_ms: int
-    p99_latency_ms: int
-    token_throughput: float
-    rps: float
-    ttft_distribution: List[int]
-    latency_distribution: List[int]
+    model: str  # Model name
+    
+    # Phase 1: Performance Metrics (from benchmark/summary.json)
+    started_at: str = ""
+    wall_time_ms: int = 0
+    total_requests: int = 0
+    success: int = 0
+    failure: int = 0
+    success_rate: float = 0.0
+    avg_ttft_ms: float = 0.0
+    p50_ttft_ms: int = 0
+    p95_ttft_ms: int = 0
+    p99_ttft_ms: int = 0
+    avg_latency_ms: float = 0.0
+    p50_latency_ms: int = 0
+    p95_latency_ms: int = 0
+    p99_latency_ms: int = 0
+    token_throughput: float = 0.0
+    rps: float = 0.0
+    ttft_distribution: List[int] = field(default_factory=list)
+    latency_distribution: List[int] = field(default_factory=list)
+    
+    # Phase 2: Function Call
+    fc_supported: bool = False
+    fc_function_name: str = ""
+    fc_arguments: str = ""
+    fc_latency_ms: float = 0.0
+    
+    # Phase 3: Meeting Summary (from summary/performance_metrics.json)
+    summary_total_chunks: int = 0
+    summary_total_tokens: int = 0
+    summary_prompt_tokens: int = 0
+    summary_completion_tokens: int = 0
+    summary_processing_time_sec: float = 0.0
+    summary_tokens_per_second: float = 0.0
 
 
-def find_benchmark_dirs(output_dir: str, pattern: Optional[str] = None) -> List[Path]:
-    """Find all directories containing benchmark results."""
+def find_fulltest_dirs(output_dir: str, pattern: Optional[str] = None) -> List[Path]:
+    """Find all directories containing fulltest results."""
     output_path = Path(output_dir)
     if not output_path.exists():
         print(f"Error: Output directory '{output_dir}' does not exist")
@@ -60,7 +78,7 @@ def find_benchmark_dirs(output_dir: str, pattern: Optional[str] = None) -> List[
         if not item.is_dir():
             continue
         
-        # Check if this looks like a benchmark result
+        # Check if this looks like a fulltest result (has benchmark/summary.json)
         summary_path = item / "benchmark" / "summary.json"
         if summary_path.exists():
             if pattern is None or pattern in item.name:
@@ -69,46 +87,112 @@ def find_benchmark_dirs(output_dir: str, pattern: Optional[str] = None) -> List[
     return sorted(results, key=lambda x: x.name)
 
 
-def parse_benchmark_result(result_dir: Path) -> Optional[BenchmarkResult]:
-    """Parse a benchmark result directory."""
-    summary_path = result_dir / "benchmark" / "summary.json"
+def parse_function_call_from_md(md_path: Path) -> dict:
+    """Parse Function Call result from full_test_report.md."""
+    result = {
+        "supported": False,
+        "function_name": "",
+        "arguments": "",
+        "latency_ms": 0.0
+    }
     
+    if not md_path.exists():
+        return result
+    
+    try:
+        content = md_path.read_text(encoding='utf-8')
+        
+        # Check if function call is supported
+        if "✅ **支持 Function Call**" in content:
+            result["supported"] = True
+            
+            # Extract function name
+            fn_match = re.search(r'- 函数名: `([^`]+)`', content)
+            if fn_match:
+                result["function_name"] = fn_match.group(1)
+            
+            # Extract arguments
+            args_match = re.search(r'- 参数: `([^`]+)`', content)
+            if args_match:
+                result["arguments"] = args_match.group(1)
+            
+            # Extract latency
+            latency_match = re.search(r'- 响应延迟: ([\d.]+) ms', content)
+            if latency_match:
+                result["latency_ms"] = float(latency_match.group(1))
+        
+    except Exception as e:
+        print(f"Warning: Failed to parse function call from {md_path}: {e}")
+    
+    return result
+
+
+def parse_fulltest_result(result_dir: Path) -> Optional[FullTestResult]:
+    """Parse a fulltest result directory."""
+    # Parse benchmark/summary.json (Phase 1)
+    summary_path = result_dir / "benchmark" / "summary.json"
     if not summary_path.exists():
-        print(f"Warning: No summary.json found in {result_dir}")
+        print(f"Warning: No benchmark/summary.json found in {result_dir}")
         return None
     
     try:
         with open(summary_path, 'r') as f:
-            data = json.load(f)
+            bench_data = json.load(f)
         
-        return BenchmarkResult(
+        result = FullTestResult(
             name=result_dir.name,
-            model=data.get('model', 'Unknown'),
-            started_at=data.get('started_at', ''),
-            wall_time_ms=data.get('wall_time_ms', 0),
-            total_requests=data.get('total_requests', 0),
-            success=data.get('success', 0),
-            failure=data.get('failure', 0),
-            success_rate=data.get('success_rate', 0),
-            avg_ttft_ms=data.get('avg_ttft_ms', 0),
-            p50_ttft_ms=data.get('p50_ttft_ms', 0),
-            p95_ttft_ms=data.get('p95_ttft_ms', 0),
-            p99_ttft_ms=data.get('p99_ttft_ms', 0),
-            avg_latency_ms=data.get('avg_latency_ms', 0),
-            p50_latency_ms=data.get('p50_latency_ms', 0),
-            p95_latency_ms=data.get('p95_latency_ms', 0),
-            p99_latency_ms=data.get('p99_latency_ms', 0),
-            token_throughput=data.get('token_throughput', 0),
-            rps=data.get('rps', 0),
-            ttft_distribution=data.get('ttft_distribution_ms', []),
-            latency_distribution=data.get('latency_distribution_ms', []),
+            model=bench_data.get('model', 'Unknown'),
+            started_at=bench_data.get('started_at', ''),
+            wall_time_ms=bench_data.get('wall_time_ms', 0),
+            total_requests=bench_data.get('total_requests', 0),
+            success=bench_data.get('success', 0),
+            failure=bench_data.get('failure', 0),
+            success_rate=bench_data.get('success_rate', 0),
+            avg_ttft_ms=bench_data.get('avg_ttft_ms', 0),
+            p50_ttft_ms=bench_data.get('p50_ttft_ms', 0),
+            p95_ttft_ms=bench_data.get('p95_ttft_ms', 0),
+            p99_ttft_ms=bench_data.get('p99_ttft_ms', 0),
+            avg_latency_ms=bench_data.get('avg_latency_ms', 0),
+            p50_latency_ms=bench_data.get('p50_latency_ms', 0),
+            p95_latency_ms=bench_data.get('p95_latency_ms', 0),
+            p99_latency_ms=bench_data.get('p99_latency_ms', 0),
+            token_throughput=bench_data.get('token_throughput', 0),
+            rps=bench_data.get('rps', 0),
+            ttft_distribution=bench_data.get('ttft_distribution_ms', []),
+            latency_distribution=bench_data.get('latency_distribution_ms', []),
         )
+        
+        # Parse summary/performance_metrics.json (Phase 3)
+        metrics_path = result_dir / "summary" / "performance_metrics.json"
+        if metrics_path.exists():
+            with open(metrics_path, 'r') as f:
+                summary_data = json.load(f)
+            
+            result.summary_total_chunks = summary_data.get('total_chunks', 0)
+            result.summary_total_tokens = summary_data.get('total_tokens', 0)
+            result.summary_prompt_tokens = summary_data.get('total_prompt_tokens', 0)
+            result.summary_completion_tokens = summary_data.get('total_completion_tokens', 0)
+            # Convert nanoseconds to seconds
+            processing_time_ns = summary_data.get('total_processing_time', 0)
+            result.summary_processing_time_sec = processing_time_ns / 1e9
+            result.summary_tokens_per_second = summary_data.get('tokens_per_second', 0)
+        
+        # Parse function call from full_test_report.md (Phase 2)
+        md_path = result_dir / "full_test_report.md"
+        fc_data = parse_function_call_from_md(md_path)
+        result.fc_supported = fc_data["supported"]
+        result.fc_function_name = fc_data["function_name"]
+        result.fc_arguments = fc_data["arguments"]
+        result.fc_latency_ms = fc_data["latency_ms"]
+        
+        return result
+        
     except Exception as e:
-        print(f"Error parsing {summary_path}: {e}")
+        print(f"Error parsing {result_dir}: {e}")
         return None
 
 
-def create_ttft_chart(results: List[BenchmarkResult]) -> str:
+def create_ttft_chart(results: List[FullTestResult]) -> str:
     """Create TTFT comparison chart."""
     names = [r.name for r in results]
     
@@ -140,7 +224,7 @@ def create_ttft_chart(results: List[BenchmarkResult]) -> str:
     ))
     
     fig.update_layout(
-        title='Time To First Token (TTFT) 对比',
+        title='Phase 1: Time To First Token (TTFT) 对比',
         xaxis_title='测试名称',
         yaxis_title='时间 (ms)',
         barmode='group',
@@ -151,7 +235,7 @@ def create_ttft_chart(results: List[BenchmarkResult]) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
-def create_latency_chart(results: List[BenchmarkResult]) -> str:
+def create_latency_chart(results: List[FullTestResult]) -> str:
     """Create Latency comparison chart."""
     names = [r.name for r in results]
     
@@ -183,7 +267,7 @@ def create_latency_chart(results: List[BenchmarkResult]) -> str:
     ))
     
     fig.update_layout(
-        title='总延迟 (Latency) 对比',
+        title='Phase 1: 总延迟 (Latency) 对比',
         xaxis_title='测试名称',
         yaxis_title='时间 (ms)',
         barmode='group',
@@ -194,7 +278,7 @@ def create_latency_chart(results: List[BenchmarkResult]) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
-def create_throughput_chart(results: List[BenchmarkResult]) -> str:
+def create_throughput_chart(results: List[FullTestResult]) -> str:
     """Create throughput comparison chart."""
     names = [r.name for r in results]
     
@@ -224,7 +308,7 @@ def create_throughput_chart(results: List[BenchmarkResult]) -> str:
     )
     
     fig.update_layout(
-        title='吞吐量对比',
+        title='Phase 1: 吞吐量对比',
         template='plotly_white',
         height=400,
         showlegend=False
@@ -233,22 +317,22 @@ def create_throughput_chart(results: List[BenchmarkResult]) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
-def create_radar_chart(results: List[BenchmarkResult]) -> str:
+def create_radar_chart(results: List[FullTestResult]) -> str:
     """Create radar chart for multi-dimensional comparison."""
     if not results:
         return ""
     
     # Normalize values for radar chart (higher is better for all)
-    # For latency metrics, we invert them so lower is better
     max_ttft = max(r.avg_ttft_ms for r in results) or 1
     max_latency = max(r.avg_latency_ms for r in results) or 1
     max_throughput = max(r.token_throughput for r in results) or 1
     max_rps = max(r.rps for r in results) or 1
+    max_summary_tps = max(r.summary_tokens_per_second for r in results) or 1
     
     fig = go.Figure()
     
     categories = ['响应速度<br>(1/TTFT)', '生成速度<br>(1/Latency)', 
-                  '吞吐量', 'RPS', '成功率']
+                  '吞吐量', 'RPS', '成功率', '会议纪要<br>Token/s']
     
     for r in results:
         # Invert TTFT and Latency so higher is better
@@ -257,9 +341,10 @@ def create_radar_chart(results: List[BenchmarkResult]) -> str:
         throughput_score = (r.token_throughput / max_throughput) * 100 if max_throughput > 0 else 0
         rps_score = (r.rps / max_rps) * 100 if max_rps > 0 else 0
         success_score = r.success_rate * 100
+        summary_score = (r.summary_tokens_per_second / max_summary_tps) * 100 if max_summary_tps > 0 else 0
         
         fig.add_trace(go.Scatterpolar(
-            r=[ttft_score, latency_score, throughput_score, rps_score, success_score],
+            r=[ttft_score, latency_score, throughput_score, rps_score, success_score, summary_score],
             theta=categories,
             fill='toself',
             name=r.name
@@ -280,7 +365,7 @@ def create_radar_chart(results: List[BenchmarkResult]) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
-def create_ttft_distribution_chart(results: List[BenchmarkResult]) -> str:
+def create_ttft_distribution_chart(results: List[FullTestResult]) -> str:
     """Create TTFT distribution box plot."""
     fig = go.Figure()
     
@@ -302,7 +387,7 @@ def create_ttft_distribution_chart(results: List[BenchmarkResult]) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
-def create_latency_distribution_chart(results: List[BenchmarkResult]) -> str:
+def create_latency_distribution_chart(results: List[FullTestResult]) -> str:
     """Create Latency distribution box plot."""
     fig = go.Figure()
     
@@ -324,7 +409,56 @@ def create_latency_distribution_chart(results: List[BenchmarkResult]) -> str:
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
-def generate_html_report(results: List[BenchmarkResult], output_path: str) -> None:
+def create_summary_chart(results: List[FullTestResult]) -> str:
+    """Create meeting summary performance comparison chart."""
+    names = [r.name for r in results]
+    
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=('Token/s', '总 Tokens', '处理时间 (秒)')
+    )
+    
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=[r.summary_tokens_per_second for r in results],
+            marker_color='#e74c3c',
+            name='Token/s'
+        ),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=[r.summary_total_tokens for r in results],
+            marker_color='#3498db',
+            name='Total Tokens'
+        ),
+        row=1, col=2
+    )
+    
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=[r.summary_processing_time_sec for r in results],
+            marker_color='#2ecc71',
+            name='Processing Time'
+        ),
+        row=1, col=3
+    )
+    
+    fig.update_layout(
+        title='Phase 3: 会议纪要性能对比',
+        template='plotly_white',
+        height=400,
+        showlegend=False
+    )
+    
+    return fig.to_html(full_html=False, include_plotlyjs=False)
+
+
+def generate_html_report(results: List[FullTestResult], output_path: str) -> None:
     """Generate the complete HTML comparison report."""
     
     # Generate all charts
@@ -334,11 +468,12 @@ def generate_html_report(results: List[BenchmarkResult], output_path: str) -> No
     radar_chart = create_radar_chart(results)
     ttft_dist_chart = create_ttft_distribution_chart(results)
     latency_dist_chart = create_latency_distribution_chart(results)
+    summary_chart = create_summary_chart(results)
     
-    # Generate summary table rows
-    table_rows = ""
+    # Generate Phase 1 summary table
+    phase1_rows = ""
     for r in results:
-        table_rows += f"""
+        phase1_rows += f"""
         <tr>
             <td>{r.name}</td>
             <td>{r.model}</td>
@@ -352,12 +487,42 @@ def generate_html_report(results: List[BenchmarkResult], output_path: str) -> No
         </tr>
         """
     
+    # Generate Phase 2 Function Call table
+    fc_rows = ""
+    for r in results:
+        status = "✅ 支持" if r.fc_supported else "❌ 不支持"
+        status_class = "success" if r.fc_supported else "error"
+        fc_rows += f"""
+        <tr>
+            <td>{r.name}</td>
+            <td class="{status_class}">{status}</td>
+            <td>{r.fc_function_name or '-'}</td>
+            <td><code>{r.fc_arguments or '-'}</code></td>
+            <td>{f'{r.fc_latency_ms:.2f}' if r.fc_latency_ms else '-'}</td>
+        </tr>
+        """
+    
+    # Generate Phase 3 Summary table
+    summary_rows = ""
+    for r in results:
+        summary_rows += f"""
+        <tr>
+            <td>{r.name}</td>
+            <td>{r.summary_total_chunks}</td>
+            <td>{r.summary_prompt_tokens:,}</td>
+            <td>{r.summary_completion_tokens:,}</td>
+            <td>{r.summary_total_tokens:,}</td>
+            <td>{r.summary_processing_time_sec:.2f}</td>
+            <td>{r.summary_tokens_per_second:.2f}</td>
+        </tr>
+        """
+    
     html_content = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Benchmark 对比报告</title>
+    <title>LLM FullTest 对比报告</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
         * {{
@@ -448,21 +613,41 @@ def generate_html_report(results: List[BenchmarkResult], output_path: str) -> No
             color: #666;
             font-size: 0.9em;
         }}
-        .metric-highlight {{
+        .success {{
+            color: #2ecc71;
             font-weight: 600;
-            color: #00d2ff;
         }}
+        .error {{
+            color: #e74c3c;
+            font-weight: 600;
+        }}
+        code {{
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }}
+        .phase-badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin-right: 10px;
+        }}
+        .phase-1 {{ background: #3498db; }}
+        .phase-2 {{ background: #9b59b6; }}
+        .phase-3 {{ background: #e74c3c; }}
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🚀 LLM Benchmark 对比报告</h1>
+            <h1>🚀 LLM FullTest 对比报告</h1>
             <p class="subtitle">生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 共 {len(results)} 个测试</p>
         </header>
         
         <div class="section">
-            <h2>📊 数据汇总</h2>
+            <h2><span class="phase-badge phase-1">Phase 1</span> 性能测试汇总</h2>
             <div style="overflow-x: auto;">
                 <table>
                     <thead>
@@ -479,7 +664,7 @@ def generate_html_report(results: List[BenchmarkResult], output_path: str) -> No
                         </tr>
                     </thead>
                     <tbody>
-                        {table_rows}
+                        {phase1_rows}
                     </tbody>
                 </table>
             </div>
@@ -525,6 +710,51 @@ def generate_html_report(results: List[BenchmarkResult], output_path: str) -> No
             </div>
         </div>
         
+        <div class="section">
+            <h2><span class="phase-badge phase-2">Phase 2</span> Function Call 测试对比</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>测试名称</th>
+                            <th>支持状态</th>
+                            <th>函数名</th>
+                            <th>参数</th>
+                            <th>延迟 (ms)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {fc_rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2><span class="phase-badge phase-3">Phase 3</span> 会议纪要性能对比</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>测试名称</th>
+                            <th>分片数</th>
+                            <th>Prompt Tokens</th>
+                            <th>Completion Tokens</th>
+                            <th>总 Tokens</th>
+                            <th>处理时间 (秒)</th>
+                            <th>Token/s</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {summary_rows}
+                    </tbody>
+                </table>
+            </div>
+            <div class="chart-container" style="margin-top: 20px;">
+                {summary_chart}
+            </div>
+        </div>
+        
         <div class="footer">
             <p>Generated by LLM Benchmark Kit | 
                <a href="https://github.com/brianxiadong/llm-benchmark-kit" style="color: #3a7bd5;">GitHub</a>
@@ -543,7 +773,7 @@ def generate_html_report(results: List[BenchmarkResult], output_path: str) -> No
 
 def main():
     parser = argparse.ArgumentParser(
-        description='LLM Benchmark Comparison Report Generator',
+        description='LLM FullTest Comparison Report Generator',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -554,12 +784,12 @@ Examples:
     parser.add_argument(
         '--input', '-i',
         default='../../output',
-        help='Input directory containing benchmark results (default: ../../output)'
+        help='Input directory containing fulltest results (default: ../../output)'
     )
     parser.add_argument(
         '--output', '-o',
-        default='comparison_report.html',
-        help='Output HTML report path (default: comparison_report.html)'
+        default='fulltest_comparison.html',
+        help='Output HTML report path (default: fulltest_comparison.html)'
     )
     parser.add_argument(
         '--pattern', '-p',
@@ -569,28 +799,28 @@ Examples:
     
     args = parser.parse_args()
     
-    print(f"🔍 Scanning {args.input} for benchmark results...")
+    print(f"🔍 Scanning {args.input} for fulltest results...")
     
-    # Find all benchmark directories
-    result_dirs = find_benchmark_dirs(args.input, args.pattern)
+    # Find all fulltest directories
+    result_dirs = find_fulltest_dirs(args.input, args.pattern)
     
     if not result_dirs:
-        print("❌ No benchmark results found!")
+        print("❌ No fulltest results found!")
         sys.exit(1)
     
-    print(f"📁 Found {len(result_dirs)} benchmark results:")
+    print(f"📁 Found {len(result_dirs)} fulltest results:")
     for d in result_dirs:
         print(f"   - {d.name}")
     
     # Parse all results
     results = []
     for d in result_dirs:
-        result = parse_benchmark_result(d)
+        result = parse_fulltest_result(d)
         if result:
             results.append(result)
     
     if not results:
-        print("❌ Failed to parse any benchmark results!")
+        print("❌ Failed to parse any fulltest results!")
         sys.exit(1)
     
     print(f"\n📊 Generating comparison report...")
