@@ -134,11 +134,11 @@ func (r *Runner) Run() (*FullTestReport, error) {
 		return nil, fmt.Errorf("failed to create benchmark directory: %w", err)
 	}
 
-	// Use larger max_tokens for full-test (thinking models need more tokens)
+	// Set appropriate max_tokens for full-test (balanced for complete answers)
 	originalMaxTokens := r.cfg.MaxTokens
-	if r.cfg.MaxTokens < 2048 {
-		r.cfg.MaxTokens = 2048
-		fmt.Printf("📝 Note: Increased max_tokens to %d for full-test (thinking models)\n\n", r.cfg.MaxTokens)
+	if r.cfg.MaxTokens > 512 || r.cfg.MaxTokens == 0 {
+		r.cfg.MaxTokens = 512
+		fmt.Printf("📝 Note: Set max_tokens to %d for full-test\n\n", r.cfg.MaxTokens)
 	}
 
 	// 1.1 First Call Test
@@ -238,9 +238,17 @@ func (r *Runner) printHeader() {
 func (r *Runner) runFirstCallTest(count int) *PhaseResult {
 	results := make([]TestResult, 0, count)
 
-	for i := 1; i <= count; i++ {
-		name := fmt.Sprintf("first_call_%d", i)
-		result := r.executeSingleRequest(name, "Write a short poem about technology.")
+	// Questions that require a short paragraph answer (50-100 tokens)
+	// Avoid complex reasoning, focus on factual descriptions
+	prompts := []string{
+		"请用三句话介绍一下人工智能的主要应用场景。",
+		"请用三句话说明云计算的主要优势。",
+		"请用三句话描述电子商务的发展趋势。",
+	}
+
+	for i := 0; i < count && i < len(prompts); i++ {
+		name := fmt.Sprintf("first_call_%d", i+1)
+		result := r.executeSingleRequest(name, prompts[i])
 		results = append(results, result)
 		time.Sleep(100 * time.Millisecond) // Small delay between calls
 	}
@@ -250,6 +258,14 @@ func (r *Runner) runFirstCallTest(count int) *PhaseResult {
 
 func (r *Runner) runConcurrentTest(concurrency, rounds int) *PhaseResult {
 	results := make([]TestResult, 0, concurrency*rounds)
+
+	// Tasks that generate moderate output (30-80 tokens)
+	prompts := []string{
+		"请用两句话解释什么是机器学习。",
+		"请用两句话说明5G网络的特点。",
+		"请用两句话介绍区块链技术。",
+		"请用两句话描述物联网的应用。",
+	}
 
 	for round := 0; round < rounds; round++ {
 		var wg sync.WaitGroup
@@ -261,7 +277,8 @@ func (r *Runner) runConcurrentTest(concurrency, rounds int) *PhaseResult {
 			go func(idx int) {
 				defer wg.Done()
 				name := fmt.Sprintf("concurrent_%d_%d", round, idx)
-				result := r.executeSingleRequest(name, "Explain cloud computing in simple terms.")
+				promptIdx := (round*concurrency + idx) % len(prompts)
+				result := r.executeSingleRequest(name, prompts[promptIdx])
 				mu.Lock()
 				roundResults[idx] = result
 				mu.Unlock()
@@ -277,13 +294,13 @@ func (r *Runner) runConcurrentTest(concurrency, rounds int) *PhaseResult {
 func (r *Runner) runMultiTurnTest(turns int) *PhaseResult {
 	results := make([]TestResult, 0, turns)
 
-	// Multi-turn conversation context
+	// Questions requiring complete paragraph answers (40-80 tokens each)
 	prompts := []string{
-		"Hello! I'm interested in learning about AI. Can you help?",
-		"What are the main types of machine learning?",
-		"Can you explain supervised learning with an example?",
-		"How is deep learning different from traditional ML?",
-		"What are some real-world applications of AI?",
+		"请用两句话介绍一下你自己。",
+		"请用三句话说明为什么编程很重要。",
+		"请用两句话描述一下春天的景色。",
+		"请用三句话说明健康饮食的重要性。",
+		"请用两句话介绍一本你推荐的书。",
 	}
 
 	for i := 0; i < turns && i < len(prompts); i++ {

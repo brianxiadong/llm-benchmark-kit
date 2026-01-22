@@ -88,17 +88,27 @@ func (r *Runner) generateReport(results []result.RequestResult, wallTime time.Du
 	if wallTime > 0 {
 		report.RPS = float64(report.Success) / wallTime.Seconds()
 
-		switch r.cfg.TokenMode {
-		case "usage":
-			if totalTokens > 0 {
-				report.TokenThroughput = float64(totalTokens) / wallTime.Seconds()
-			} else if totalChars > 0 {
-				// Fallback to chars when API doesn't return usage
-				report.TokenMode = "chars"
-				report.TokenThroughput = float64(totalChars) / wallTime.Seconds()
+		// Calculate single-thread throughput: tokens / avg_latency
+		// This represents the generation speed of a single request
+		if report.AvgLatencyMs > 0 {
+			avgLatencySec := report.AvgLatencyMs / 1000.0
+			switch r.cfg.TokenMode {
+			case "usage":
+				if totalTokens > 0 && report.Success > 0 {
+					avgTokensPerRequest := float64(totalTokens) / float64(report.Success)
+					report.TokenThroughput = avgTokensPerRequest / avgLatencySec
+				} else if totalChars > 0 && report.Success > 0 {
+					// Fallback to chars when API doesn't return usage
+					report.TokenMode = "chars"
+					avgCharsPerRequest := float64(totalChars) / float64(report.Success)
+					report.TokenThroughput = avgCharsPerRequest / avgLatencySec
+				}
+			case "chars":
+				if totalChars > 0 && report.Success > 0 {
+					avgCharsPerRequest := float64(totalChars) / float64(report.Success)
+					report.TokenThroughput = avgCharsPerRequest / avgLatencySec
+				}
 			}
-		case "chars":
-			report.TokenThroughput = float64(totalChars) / wallTime.Seconds()
 		}
 	}
 

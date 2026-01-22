@@ -72,9 +72,9 @@ type BenchmarkReport struct {
 	P95LatencyMs int64   `json:"p95_latency_ms"`
 	P99LatencyMs int64   `json:"p99_latency_ms"`
 
-	// Throughput
-	TokenMode       string  `json:"token_mode"` // usage|chars|disabled
-	TokenThroughput float64 `json:"token_throughput"`
+	// Throughput (single-thread: avg tokens per second per request)
+	TokenMode       string  `json:"token_mode"`       // usage|chars|disabled
+	TokenThroughput float64 `json:"token_throughput"` // tokens/s (single request avg)
 	RPS             float64 `json:"rps"`
 
 	// Sampling
