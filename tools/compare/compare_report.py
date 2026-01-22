@@ -57,7 +57,14 @@ class FullTestResult:
     fc_arguments: str = ""
     fc_latency_ms: float = 0.0
     
-    # Phase 3: Meeting Summary (from summary/performance_metrics.json)
+    # Phase 3: Long Context Test
+    lc_max_supported: int = 0
+    lc_avg_ttft_ms: float = 0.0
+    lc_avg_latency_ms: float = 0.0
+    lc_avg_throughput: float = 0.0
+    lc_results: List[dict] = field(default_factory=list)  # List of {context_length, ttft_ms, latency_ms, throughput, success}
+    
+    # Phase 4: Meeting Summary (from summary/performance_metrics.json)
     summary_total_chunks: int = 0
     summary_total_tokens: int = 0
     summary_prompt_tokens: int = 0
@@ -127,6 +134,69 @@ def parse_function_call_from_md(md_path: Path) -> dict:
     return result
 
 
+def parse_long_context_from_md(md_path: Path) -> dict:
+    """Parse Long Context test results from full_test_report.md."""
+    result = {
+        "max_supported": 0,
+        "avg_ttft_ms": 0.0,
+        "avg_latency_ms": 0.0,
+        "avg_throughput": 0.0,
+        "results": []
+    }
+    
+    if not md_path.exists():
+        return result
+    
+    try:
+        content = md_path.read_text(encoding='utf-8')
+        
+        # Find the Long Context section
+        lc_section = re.search(r'## Phase 3: 长上下文测试\s*(.*?)(?=## Phase|$)', content, re.DOTALL)
+        if not lc_section:
+            return result
+        
+        section_content = lc_section.group(1)
+        
+        # Parse table rows: | 1000 字符 | 700 | 123.45 | 456.78 | 12.34 | ✅ |
+        row_pattern = r'\|\s*(\d+)\s*字符\s*\|\s*(\d+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([✅❌])\s*\|'
+        for match in re.finditer(row_pattern, section_content):
+            context_length = int(match.group(1))
+            input_tokens = int(match.group(2))
+            ttft_ms = float(match.group(3))
+            latency_ms = float(match.group(4))
+            throughput = float(match.group(5))
+            success = match.group(6) == '✅'
+            
+            result["results"].append({
+                "context_length": context_length,
+                "input_tokens": input_tokens,
+                "ttft_ms": ttft_ms,
+                "latency_ms": latency_ms,
+                "throughput": throughput,
+                "success": success
+            })
+            
+            if success:
+                result["max_supported"] = max(result["max_supported"], context_length)
+        
+        # Parse summary line: **最大支持上下文**: 32000 字符 | **平均 TTFT**: 123.45 ms | **平均吞吐**: 12.34 tokens/s
+        summary_match = re.search(r'\*\*最大支持上下文\*\*:\s*(\d+)\s*字符.*?\*\*平均 TTFT\*\*:\s*([\d.]+)\s*ms.*?\*\*平均吞吐\*\*:\s*([\d.]+)\s*tokens/s', section_content)
+        if summary_match:
+            result["max_supported"] = int(summary_match.group(1))
+            result["avg_ttft_ms"] = float(summary_match.group(2))
+            result["avg_throughput"] = float(summary_match.group(3))
+        
+        # Calculate avg latency from results if not in summary
+        successful_results = [r for r in result["results"] if r["success"]]
+        if successful_results:
+            result["avg_latency_ms"] = sum(r["latency_ms"] for r in successful_results) / len(successful_results)
+        
+    except Exception as e:
+        print(f"Warning: Failed to parse long context from {md_path}: {e}")
+    
+    return result
+
+
 def parse_fulltest_result(result_dir: Path) -> Optional[FullTestResult]:
     """Parse a fulltest result directory."""
     # Parse benchmark/summary.json (Phase 1)
@@ -184,6 +254,14 @@ def parse_fulltest_result(result_dir: Path) -> Optional[FullTestResult]:
         result.fc_function_name = fc_data["function_name"]
         result.fc_arguments = fc_data["arguments"]
         result.fc_latency_ms = fc_data["latency_ms"]
+        
+        # Parse long context results from full_test_report.md (Phase 3)
+        lc_data = parse_long_context_from_md(md_path)
+        result.lc_max_supported = lc_data["max_supported"]
+        result.lc_avg_ttft_ms = lc_data["avg_ttft_ms"]
+        result.lc_avg_latency_ms = lc_data["avg_latency_ms"]
+        result.lc_avg_throughput = lc_data["avg_throughput"]
+        result.lc_results = lc_data["results"]
         
         return result
         
@@ -449,10 +527,88 @@ def create_summary_chart(results: List[FullTestResult]) -> str:
     )
     
     fig.update_layout(
-        title='Phase 3: 会议纪要性能对比',
+        title='Phase 4: 会议纪要性能对比',
         template='plotly_white',
         height=400,
         showlegend=False
+    )
+    
+    return fig.to_html(full_html=False, include_plotlyjs=False)
+
+
+def create_long_context_chart(results: List[FullTestResult]) -> str:
+    """Create long context test comparison chart."""
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=('最大支持上下文 (字符)', '平均 TTFT (ms)', '平均吞吐 (tokens/s)')
+    )
+    
+    names = [r.name for r in results]
+    
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=[r.lc_max_supported for r in results],
+            marker_color='#9b59b6',
+            name='Max Context'
+        ),
+        row=1, col=1
+    )
+    
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=[r.lc_avg_ttft_ms for r in results],
+            marker_color='#3498db',
+            name='Avg TTFT'
+        ),
+        row=1, col=2
+    )
+    
+    fig.add_trace(
+        go.Bar(
+            x=names,
+            y=[r.lc_avg_throughput for r in results],
+            marker_color='#2ecc71',
+            name='Avg Throughput'
+        ),
+        row=1, col=3
+    )
+    
+    fig.update_layout(
+        title='Phase 3: 长上下文测试对比',
+        template='plotly_white',
+        height=400,
+        showlegend=False
+    )
+    
+    return fig.to_html(full_html=False, include_plotlyjs=False)
+
+
+def create_long_context_detail_chart(results: List[FullTestResult]) -> str:
+    """Create detailed long context performance chart showing TTFT vs context length."""
+    fig = go.Figure()
+    
+    for r in results:
+        if r.lc_results:
+            x_vals = [res["context_length"] / 1000 for res in r.lc_results if res["success"]]  # Convert to K
+            y_ttft = [res["ttft_ms"] for res in r.lc_results if res["success"]]
+            
+            if x_vals and y_ttft:
+                fig.add_trace(go.Scatter(
+                    x=x_vals,
+                    y=y_ttft,
+                    mode='lines+markers',
+                    name=r.name,
+                    marker=dict(size=10)
+                ))
+    
+    fig.update_layout(
+        title='长上下文 TTFT 曲线对比 (上下文长度 vs TTFT)',
+        xaxis_title='上下文长度 (K字符)',
+        yaxis_title='TTFT (ms)',
+        template='plotly_white',
+        height=450
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -468,6 +624,8 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
     radar_chart = create_radar_chart(results)
     ttft_dist_chart = create_ttft_distribution_chart(results)
     latency_dist_chart = create_latency_distribution_chart(results)
+    long_context_chart = create_long_context_chart(results)
+    long_context_detail_chart = create_long_context_detail_chart(results)
     summary_chart = create_summary_chart(results)
     
     # Generate Phase 1 summary table
@@ -502,7 +660,20 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
         </tr>
         """
     
-    # Generate Phase 3 Summary table
+    # Generate Phase 3 Long Context table
+    lc_rows = ""
+    for r in results:
+        lc_rows += f"""
+        <tr>
+            <td>{r.name}</td>
+            <td>{r.lc_max_supported:,} 字符</td>
+            <td>{r.lc_avg_ttft_ms:.2f}</td>
+            <td>{r.lc_avg_latency_ms:.2f}</td>
+            <td>{r.lc_avg_throughput:.2f}</td>
+        </tr>
+        """
+    
+    # Generate Phase 4 Summary table
     summary_rows = ""
     for r in results:
         summary_rows += f"""
@@ -731,7 +902,33 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
         </div>
         
         <div class="section">
-            <h2><span class="phase-badge phase-3">Phase 3</span> 会议纪要性能对比</h2>
+            <h2><span class="phase-badge phase-3">Phase 3</span> 长上下文测试对比</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>测试名称</th>
+                            <th>最大支持上下文</th>
+                            <th>平均 TTFT (ms)</th>
+                            <th>平均 Latency (ms)</th>
+                            <th>平均吞吐 (tok/s)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {lc_rows}
+                    </tbody>
+                </table>
+            </div>
+            <div class="chart-container" style="margin-top: 20px;">
+                {long_context_chart}
+            </div>
+            <div class="chart-container" style="margin-top: 20px;">
+                {long_context_detail_chart}
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2><span class="phase-badge phase-3">Phase 4</span> 会议纪要性能对比</h2>
             <div style="overflow-x: auto;">
                 <table>
                     <thead>

@@ -55,6 +55,27 @@ type FunctionCallResult struct {
 	Error           string  `json:"error,omitempty"`
 }
 
+// LongContextTestResult holds a single long context test result.
+type LongContextTestResult struct {
+	ContextLength int     `json:"context_length"` // Input context length in chars
+	InputTokens   int     `json:"input_tokens"`   // Estimated input tokens
+	OutputTokens  int     `json:"output_tokens"`  // Output tokens
+	TTFTMs        float64 `json:"ttft_ms"`        // Time to first token
+	LatencyMs     float64 `json:"latency_ms"`     // Total latency
+	Throughput    float64 `json:"throughput"`     // Output tokens per second
+	Success       bool    `json:"success"`
+	Error         string  `json:"error,omitempty"`
+}
+
+// LongContextResult holds all long context test results.
+type LongContextResult struct {
+	Results       []LongContextTestResult `json:"results"`
+	MaxSupported  int                     `json:"max_supported"`   // Maximum supported context length
+	AvgTTFTMs     float64                 `json:"avg_ttft_ms"`
+	AvgLatencyMs  float64                 `json:"avg_latency_ms"`
+	AvgThroughput float64                 `json:"avg_throughput"`
+}
+
 // FullTestReport contains the combined results from all test phases.
 type FullTestReport struct {
 	ModelName     string        `json:"model_name"`
@@ -72,7 +93,10 @@ type FullTestReport struct {
 	// Phase 2: Function Call
 	FunctionCallResult *FunctionCallResult `json:"function_call_result,omitempty"`
 
-	// Phase 3: Summary
+	// Phase 3: Long Context Test
+	LongContextResult *LongContextResult `json:"long_context_result,omitempty"`
+
+	// Phase 4: Summary
 	SummaryMetrics *summarizer.SummaryMetrics `json:"summary_metrics,omitempty"`
 	SummaryContent string                     `json:"summary_content,omitempty"`
 
@@ -210,9 +234,21 @@ func (r *Runner) Run() (*FullTestReport, error) {
 	fmt.Println("✅ Phase 2 Complete!")
 	fmt.Println()
 
-	// ===== Phase 3: Meeting Summary Test =====
+	// ===== Phase 3: Long Context Test =====
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("📝 Phase 3: Meeting Summary Test")
+	fmt.Println("📏 Phase 3: Long Context Test")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	report.LongContextResult = r.runLongContextTest()
+	r.printLongContextResult(report.LongContextResult)
+
+	fmt.Println("✅ Phase 3 Complete!")
+	fmt.Println()
+
+	// ===== Phase 4: Meeting Summary Test =====
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("📝 Phase 4: Meeting Summary Test")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println()
 
@@ -225,7 +261,7 @@ func (r *Runner) Run() (*FullTestReport, error) {
 			report.SummaryOutputDir = summaryDir
 			report.SummaryMetrics = summaryMetrics
 			report.SummaryContent = summaryContent
-			fmt.Println("✅ Phase 3 Complete!")
+			fmt.Println("✅ Phase 4 Complete!")
 		}
 	} else {
 		fmt.Println("⚠️  No transcript file provided, skipping summary test")
@@ -682,7 +718,197 @@ func (r *Runner) printFunctionCallResult(result *FunctionCallResult) {
 	fmt.Printf("   ⏱️  响应延迟: %.2f ms\n\n", result.LatencyMs)
 }
 
-// ========== Phase 3: Summary Test ==========
+// ========== Phase 3: Long Context Test ==========
+
+// generateLongContext generates a context of specified character length
+func (r *Runner) generateLongContext(targetChars int) string {
+	// Base content to repeat (approximately 500 chars per block)
+	baseContent := `这是一段用于测试长上下文能力的文本内容。在人工智能和大语言模型的发展过程中，处理长文本的能力变得越来越重要。
+现代的大语言模型需要能够理解和处理长达数万甚至数十万字符的输入文本。这对于文档摘要、长篇对话、代码理解等任务至关重要。
+我们通过不同长度的上下文来测试模型的处理能力，包括响应时间、首字延迟和输出质量等指标。`
+
+	// Calculate how many times to repeat
+	repeats := (targetChars / len(baseContent)) + 1
+
+	var sb strings.Builder
+	for i := 0; i < repeats && sb.Len() < targetChars; i++ {
+		sb.WriteString(fmt.Sprintf("\n[段落 %d]\n%s\n", i+1, baseContent))
+	}
+
+	result := sb.String()
+	if len(result) > targetChars {
+		result = result[:targetChars]
+	}
+	return result
+}
+
+func (r *Runner) runLongContextTest() *LongContextResult {
+	result := &LongContextResult{
+		Results: make([]LongContextTestResult, 0),
+	}
+
+	// Test different context lengths: 1K, 4K, 8K, 16K, 32K chars
+	// Approximately 1 Chinese char ≈ 0.7 token, 1 English word ≈ 1.3 token
+	contextLengths := []int{1000, 4000, 8000, 16000, 32000}
+
+	fmt.Println("   测试不同上下文长度下的模型性能...")
+	fmt.Println("   ┌─────────────┬──────────────┬──────────────┬──────────────┬──────────────┬────────┐")
+	fmt.Println("   │ 上下文长度  │ 估算Tokens   │ TTFT (ms)    │ Latency (ms) │ 吞吐 (tok/s) │ 状态   │")
+	fmt.Println("   ├─────────────┼──────────────┼──────────────┼──────────────┼──────────────┼────────┤")
+
+	var totalTTFT, totalLatency, totalThroughput float64
+	successCount := 0
+
+	for _, length := range contextLengths {
+		testResult := r.executeLongContextRequest(length)
+		result.Results = append(result.Results, testResult)
+
+		// Print result row
+		status := "✅"
+		if !testResult.Success {
+			status = "❌"
+		} else {
+			successCount++
+			totalTTFT += testResult.TTFTMs
+			totalLatency += testResult.LatencyMs
+			totalThroughput += testResult.Throughput
+			result.MaxSupported = length
+		}
+
+		fmt.Printf("   │ %9d字 │ %10d   │ %10.2f   │ %10.2f   │ %10.2f   │ %s     │\n",
+			length, testResult.InputTokens, testResult.TTFTMs, testResult.LatencyMs, testResult.Throughput, status)
+	}
+
+	fmt.Println("   └─────────────┴──────────────┴──────────────┴──────────────┴──────────────┴────────┘")
+
+	// Calculate averages
+	if successCount > 0 {
+		result.AvgTTFTMs = totalTTFT / float64(successCount)
+		result.AvgLatencyMs = totalLatency / float64(successCount)
+		result.AvgThroughput = totalThroughput / float64(successCount)
+	}
+
+	fmt.Printf("\n   📊 最大支持上下文: %d 字符\n", result.MaxSupported)
+	fmt.Printf("   📊 平均 TTFT: %.2f ms | 平均 Latency: %.2f ms | 平均吞吐: %.2f tokens/s\n\n",
+		result.AvgTTFTMs, result.AvgLatencyMs, result.AvgThroughput)
+
+	return result
+}
+
+func (r *Runner) executeLongContextRequest(contextLength int) LongContextTestResult {
+	result := LongContextTestResult{
+		ContextLength: contextLength,
+		InputTokens:   int(float64(contextLength) * 0.7), // Rough estimate for Chinese text
+	}
+
+	start := time.Now()
+	var firstTokenTime time.Time
+	gotFirstToken := false
+
+	// Generate long context
+	longContext := r.generateLongContext(contextLength)
+
+	// Create prompt with long context
+	prompt := fmt.Sprintf(`以下是一段长文本，请阅读后用一句话总结其主题：
+
+%s
+
+请用一句话（不超过50字）总结上述内容的主题：`, longContext)
+
+	// Log the request
+	r.writeLog("")
+	r.writeLog("════════════════════════════════════════════════════════════════")
+	r.writeLog("[Long Context Test - %d chars] REQUEST", contextLength)
+	r.writeLog("════════════════════════════════════════════════════════════════")
+	r.writeLog("Time: %s", start.Format("2006-01-02 15:04:05.000"))
+	r.writeLog("Context Length: %d chars (estimated %d tokens)", contextLength, result.InputTokens)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.cfg.TimeoutSec)*time.Second)
+	defer cancel()
+
+	// Create workload input
+	input := workload.NewChatWorkload(
+		fmt.Sprintf("long_context_%d", contextLength),
+		[]workload.ChatMessage{
+			{Role: "user", Content: prompt},
+		},
+		256, // Limited output tokens for summary
+	)
+
+	// Use the provider's StreamChat
+	events, err := r.p.StreamChat(ctx, r.cfg, input)
+	if err != nil {
+		result.Success = false
+		result.Error = err.Error()
+		result.LatencyMs = float64(time.Since(start).Milliseconds())
+		r.writeLog("Error: %s", err.Error())
+		return result
+	}
+
+	// Process stream events
+	var outputTokens int
+	for event := range events {
+		if event.Type == provider.EventContent && !gotFirstToken {
+			firstTokenTime = time.Now()
+			gotFirstToken = true
+			r.writeLog("First token at: %.2f ms", float64(firstTokenTime.Sub(start).Milliseconds()))
+		}
+		if event.Type == provider.EventUsage && event.Usage != nil {
+			outputTokens = event.Usage.CompletionTokens
+		}
+		if event.Type == provider.EventError {
+			result.Success = false
+			result.Error = event.Err.Error()
+			result.LatencyMs = float64(time.Since(start).Milliseconds())
+			r.writeLog("Error: %s", event.Err.Error())
+			return result
+		}
+	}
+
+	endTime := time.Now()
+	result.LatencyMs = float64(endTime.Sub(start).Milliseconds())
+	result.OutputTokens = outputTokens
+
+	if gotFirstToken {
+		result.TTFTMs = float64(firstTokenTime.Sub(start).Milliseconds())
+	} else {
+		result.TTFTMs = result.LatencyMs
+	}
+
+	// Calculate throughput
+	if result.LatencyMs > 0 {
+		result.Throughput = float64(outputTokens) / (result.LatencyMs / 1000.0)
+	}
+
+	result.Success = true
+
+	r.writeLog("Output Tokens: %d", outputTokens)
+	r.writeLog("TTFT: %.2f ms", result.TTFTMs)
+	r.writeLog("Latency: %.2f ms", result.LatencyMs)
+	r.writeLog("Throughput: %.2f tokens/s", result.Throughput)
+	r.writeLog("Status: SUCCESS")
+
+	return result
+}
+
+func (r *Runner) printLongContextResult(result *LongContextResult) {
+	if result == nil {
+		fmt.Println("   ⚠️ 长上下文测试未完成")
+		return
+	}
+
+	successCount := 0
+	for _, res := range result.Results {
+		if res.Success {
+			successCount++
+		}
+	}
+
+	fmt.Printf("   成功: %d/%d | 最大支持: %d 字符 | 平均TTFT: %.2f ms | 平均吞吐: %.2f tokens/s\n\n",
+		successCount, len(result.Results), result.MaxSupported, result.AvgTTFTMs, result.AvgThroughput)
+}
+
+// ========== Phase 4: Summary Test ==========
 
 func (r *Runner) runSummary(outputDir string) (string, *summarizer.SummaryMetrics, error) {
 	if _, err := os.Stat(r.transcriptFile); os.IsNotExist(err) {
@@ -759,8 +985,28 @@ func (r *Runner) generateFinalReport(report *FullTestReport) error {
 		sb.WriteString("\n")
 	}
 
-	// Phase 3: Summary Results
-	sb.WriteString("## Phase 3: 会议纪要测试\n\n")
+	// Phase 3: Long Context Results
+	sb.WriteString("## Phase 3: 长上下文测试\n\n")
+	if report.LongContextResult != nil {
+		lc := report.LongContextResult
+		sb.WriteString("| 上下文长度 | 估算Tokens | TTFT (ms) | Latency (ms) | 吞吐 (tok/s) | 状态 |\n")
+		sb.WriteString("|------------|------------|-----------|--------------|--------------|------|\n")
+		for _, res := range lc.Results {
+			status := "✅"
+			if !res.Success {
+				status = "❌"
+			}
+			sb.WriteString(fmt.Sprintf("| %d 字符 | %d | %.2f | %.2f | %.2f | %s |\n",
+				res.ContextLength, res.InputTokens, res.TTFTMs, res.LatencyMs, res.Throughput, status))
+		}
+		sb.WriteString(fmt.Sprintf("\n**最大支持上下文**: %d 字符 | **平均 TTFT**: %.2f ms | **平均吞吐**: %.2f tokens/s\n\n",
+			lc.MaxSupported, lc.AvgTTFTMs, lc.AvgThroughput))
+	} else {
+		sb.WriteString("⚠️ 长上下文测试未完成\n\n")
+	}
+
+	// Phase 4: Summary Results
+	sb.WriteString("## Phase 4: 会议纪要测试\n\n")
 	if report.SummaryOutputDir != "" {
 		sb.WriteString(fmt.Sprintf("📁 会议纪要: [summary/meeting_summary.md](%s/meeting_summary.md)\n", report.SummaryOutputDir))
 		sb.WriteString(fmt.Sprintf("📊 性能报告: [summary/performance_report.md](%s/performance_report.md)\n\n", report.SummaryOutputDir))
@@ -781,7 +1027,7 @@ func (r *Runner) generateFinalReport(report *FullTestReport) error {
 	}
 
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-	fmt.Println("📋 Phase 4: Final Report Generated")
+	fmt.Println("📋 Phase 5: Final Report Generated")
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Printf("📄 Markdown: %s\n", reportPath)
 	fmt.Printf("📄 HTML:     %s\n", htmlPath)
@@ -974,6 +1220,94 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		}
 		sampleBuilder.WriteString(`</div>`)
 		sampleDataHTML = sampleBuilder.String()
+	}
+
+	// Prepare long context test HTML
+	longContextHTML := ""
+	longContextChartData := ""
+	if report.LongContextResult != nil && len(report.LongContextResult.Results) > 0 {
+		lc := report.LongContextResult
+		var lcBuilder strings.Builder
+		lcBuilder.WriteString(`<div class="phase-card">
+			<h3>测试结果详情</h3>
+			<table>
+				<thead><tr><th>上下文长度</th><th>估算Tokens</th><th>TTFT (ms)</th><th>Latency (ms)</th><th>吞吐 (tok/s)</th><th>状态</th></tr></thead>
+				<tbody>`)
+		for _, res := range lc.Results {
+			status := "✅"
+			statusClass := "success"
+			if !res.Success {
+				status = "❌"
+				statusClass = "error"
+			}
+			lcBuilder.WriteString(fmt.Sprintf(`<tr>
+				<td>%d 字符</td>
+				<td>%d</td>
+				<td>%.2f</td>
+				<td>%.2f</td>
+				<td>%.2f</td>
+				<td class="%s">%s</td>
+			</tr>`, res.ContextLength, res.InputTokens, res.TTFTMs, res.LatencyMs, res.Throughput, statusClass, status))
+		}
+		lcBuilder.WriteString(fmt.Sprintf(`</tbody></table>
+			<div class="phase-summary">
+				<span>最大支持: <strong>%d 字符</strong></span>
+				<span>平均 TTFT: <strong>%.2f ms</strong></span>
+				<span>平均吞吐: <strong>%.2f tok/s</strong></span>
+			</div>
+		</div>`, lc.MaxSupported, lc.AvgTTFTMs, lc.AvgThroughput))
+		longContextHTML = lcBuilder.String()
+
+		// Prepare chart data
+		var contextLengths, ttftValues, latencyValues, throughputValues []string
+		for _, res := range lc.Results {
+			contextLengths = append(contextLengths, fmt.Sprintf("%dK", res.ContextLength/1000))
+			if res.Success {
+				ttftValues = append(ttftValues, fmt.Sprintf("%.2f", res.TTFTMs))
+				latencyValues = append(latencyValues, fmt.Sprintf("%.2f", res.LatencyMs))
+				throughputValues = append(throughputValues, fmt.Sprintf("%.2f", res.Throughput))
+			} else {
+				ttftValues = append(ttftValues, "null")
+				latencyValues = append(latencyValues, "null")
+				throughputValues = append(throughputValues, "null")
+			}
+		}
+		longContextChartData = fmt.Sprintf(`
+		<div class="chart-container" id="longContextChart"></div>
+		<script>
+			var lcTrace1 = {
+				x: [%s],
+				y: [%s],
+				name: 'TTFT (ms)',
+				type: 'scatter',
+				mode: 'lines+markers',
+				marker: { color: '#3498db', size: 10 },
+				yaxis: 'y'
+			};
+			var lcTrace2 = {
+				x: [%s],
+				y: [%s],
+				name: 'Latency (ms)',
+				type: 'scatter',
+				mode: 'lines+markers',
+				marker: { color: '#e74c3c', size: 10 },
+				yaxis: 'y'
+			};
+			var lcLayout = {
+				title: '上下文长度 vs 延迟',
+				xaxis: { title: '上下文长度' },
+				yaxis: { title: '时间 (ms)' },
+				paper_bgcolor: 'rgba(0,0,0,0)',
+				plot_bgcolor: 'rgba(0,0,0,0)',
+				height: 350,
+				legend: { x: 0.02, y: 0.98 }
+			};
+			Plotly.newPlot('longContextChart', [lcTrace1, lcTrace2], lcLayout);
+		</script>`,
+			"'"+strings.Join(contextLengths, "','")+"'",
+			strings.Join(ttftValues, ","),
+			"'"+strings.Join(contextLengths, "','")+"'",
+			strings.Join(latencyValues, ","))
 	}
 
 	// Generate phase result tables
@@ -1207,7 +1541,13 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
         </div>
 
         <div class="section">
-            <h2>📝 Phase 3: 会议纪要测试</h2>
+            <h2>� Phase 3: 长上下文测试</h2>
+            %s
+            %s
+        </div>
+
+        <div class="section">
+            <h2>📝 Phase 4: 会议纪要测试</h2>
             <div class="fc-result">
                 <div class="fc-status">%s</div>
                 <div class="fc-details">%s</div>
@@ -1269,6 +1609,7 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		generatePhaseHTML(report.MultiTurnResults, "1.3 多轮对话测试 (Multi-turn)"),
 		sampleDataHTML,
 		fcSupported, fcDetails,
+		longContextHTML, longContextChartData,
 		summaryStatus, summaryDetails, summaryMetricsHTML, summaryContentPreview,
 		time.Now().Format("2006-01-02 15:04:05"),
 		string(firstCallNamesJSON), string(firstCallLatenciesJSON),

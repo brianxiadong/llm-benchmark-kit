@@ -4,13 +4,14 @@
 
 ## 功能特性
 
-对比 fulltest 的三个测试阶段：
+对比 fulltest 的四个测试阶段：
 
 | 阶段 | 对比内容 |
 |------|----------|
 | **Phase 1** | TTFT、Latency、Throughput、RPS、成功率 |
 | **Phase 2** | Function Call 支持状态、函数名、参数、延迟 |
-| **Phase 3** | 会议纪要 Token 数、处理时间、Token/s |
+| **Phase 3** | 长上下文测试：最大支持上下文、TTFT vs 上下文长度曲线 |
+| **Phase 4** | 会议纪要 Token 数、处理时间、Token/s |
 
 ## 安装
 
@@ -44,10 +45,12 @@ python compare_report.py -i /path/to/output -o /path/to/report.html
 1. **TTFT 对比柱状图** - Avg/P50/P95/P99 对比
 2. **Latency 对比柱状图** - Avg/P50/P95/P99 对比
 3. **吞吐量对比** - Token Throughput 和 RPS
-4. **综合雷达图** - 六维度性能对比（含会议纪要指标）
+4. **综合雷达图** - 多维度性能对比
 5. **TTFT 分布箱线图** - 延迟分布可视化
 6. **Latency 分布箱线图** - 延迟分布可视化
-7. **会议纪要性能对比** - Token/s、总 Tokens、处理时间
+7. **长上下文对比** - 最大支持上下文、平均 TTFT、平均吞吐
+8. **长上下文 TTFT 曲线** - 不同上下文长度下的 TTFT 对比
+9. **会议纪要性能对比** - Token/s、总 Tokens、处理时间
 
 ## 输入数据格式
 
