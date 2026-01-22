@@ -134,6 +134,13 @@ func (r *Runner) Run() (*FullTestReport, error) {
 		return nil, fmt.Errorf("failed to create benchmark directory: %w", err)
 	}
 
+	// Use larger max_tokens for full-test (thinking models need more tokens)
+	originalMaxTokens := r.cfg.MaxTokens
+	if r.cfg.MaxTokens < 1024 {
+		r.cfg.MaxTokens = 1024
+		fmt.Printf("📝 Note: Increased max_tokens to %d for full-test (thinking models)\n\n", r.cfg.MaxTokens)
+	}
+
 	// 1.1 First Call Test
 	fmt.Println("📌 1.1 First Call Test (冷启动测试)")
 	report.FirstCallResults = r.runFirstCallTest(3)
@@ -163,6 +170,9 @@ func (r *Runner) Run() (*FullTestReport, error) {
 		report.BenchmarkReport = benchReport
 		report.BenchmarkOutputDir = benchmarkDir
 	}
+
+	// Restore original max_tokens
+	r.cfg.MaxTokens = originalMaxTokens
 
 	fmt.Println("✅ Phase 1 Complete!")
 	fmt.Println()
@@ -386,7 +396,7 @@ func (r *Runner) runFunctionCallTest() *FunctionCallResult {
 		"messages": []map[string]string{
 			{"role": "user", "content": "北京今天天气怎么样？"},
 		},
-		"max_tokens": 256,
+		"max_tokens": 512, // Enough for function call response
 		"stream":     false,
 		"tools": []map[string]interface{}{
 			{
