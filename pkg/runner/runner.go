@@ -179,7 +179,7 @@ func (r *Runner) executeRequest(input workload.WorkloadInput) result.RequestResu
 				res.TTFT = res.FirstContentTime.Sub(res.StartTime)
 				gotFirstContent = true
 			}
-			
+
 			contentFrameCount++
 			// Capture first frame (frame 1)
 			if contentFrameCount == 1 {
@@ -189,7 +189,7 @@ func (r *Runner) executeRequest(input workload.WorkloadInput) result.RequestResu
 			if contentFrameCount == 2 || contentFrameCount == 5 || contentFrameCount == 10 {
 				res.MiddleFramesRaw = append(res.MiddleFramesRaw, truncateString(event.Raw, MaxSampleSize))
 			}
-			
+
 			totalContent += event.Text
 
 		case provider.EventUsage:

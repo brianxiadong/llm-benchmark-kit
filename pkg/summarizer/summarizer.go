@@ -28,7 +28,7 @@ type ChunkMetrics struct {
 	ProcessingTime   time.Duration `json:"processing_time"`
 	StartTime        time.Time     `json:"start_time"`
 	EndTime          time.Time     `json:"end_time"`
-	Overflowed       bool          `json:"overflowed"`        // Whether this chunk caused overflow
+	Overflowed       bool          `json:"overflowed"`               // Whether this chunk caused overflow
 	OverflowError    string        `json:"overflow_error,omitempty"` // Error message if overflowed
 }
 
@@ -45,8 +45,8 @@ type SummaryMetrics struct {
 	ChunkMetrics          []ChunkMetrics `json:"chunk_metrics"`
 	StartTime             time.Time      `json:"start_time"`
 	EndTime               time.Time      `json:"end_time"`
-	OverflowDetected      bool           `json:"overflow_detected"`           // Whether overflow was detected
-	OverflowAtChunk       int            `json:"overflow_at_chunk,omitempty"` // Chunk number where overflow occurred
+	OverflowDetected      bool           `json:"overflow_detected"`            // Whether overflow was detected
+	OverflowAtChunk       int            `json:"overflow_at_chunk,omitempty"`  // Chunk number where overflow occurred
 	OverflowAtTokens      int            `json:"overflow_at_tokens,omitempty"` // Total tokens when overflow occurred
 }
 
@@ -149,16 +149,16 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 				metrics.OverflowDetected = true
 				metrics.OverflowAtChunk = i + 1
 				metrics.OverflowAtTokens = metrics.TotalTokens
-				
-				fmt.Printf("  ⚠️  Token overflow detected at chunk %d/%d (total tokens so far: %d)\n", 
+
+				fmt.Printf("  ⚠️  Token overflow detected at chunk %d/%d (total tokens so far: %d)\n",
 					i+1, len(chunks), metrics.TotalTokens)
 				fmt.Printf("  Error: %s\n", err.Error())
-				
+
 				// Use the current summary as the final result
 				if currentSummary == "" {
 					return "", fmt.Errorf("overflow on first chunk, cannot continue: %w", err)
 				}
-				
+
 				fmt.Printf("  Using last successful summary as final result\n")
 				break
 			}

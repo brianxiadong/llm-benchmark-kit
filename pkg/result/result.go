@@ -30,9 +30,9 @@ type RequestResult struct {
 	EndTime          time.Time `json:"-"`
 
 	// Sampling
-	FirstContentRaw   string   `json:"-"` // First content frame raw data
-	MiddleFramesRaw   []string `json:"-"` // Middle content frames raw data
-	FinalFrameRaw     string   `json:"-"` // Final frame raw data
+	FirstContentRaw string   `json:"-"` // First content frame raw data
+	MiddleFramesRaw []string `json:"-"` // Middle content frames raw data
+	FinalFrameRaw   string   `json:"-"` // Final frame raw data
 }
 
 // IsSuccess returns true if the request was successful.
@@ -78,9 +78,9 @@ type BenchmarkReport struct {
 	RPS             float64 `json:"rps"`
 
 	// Sampling
-	FirstContentRaw   string   `json:"first_content_raw,omitempty"`
-	MiddleFramesRaw   []string `json:"middle_frames_raw,omitempty"`
-	FinalFrameRaw     string   `json:"final_frame_raw,omitempty"`
+	FirstContentRaw string   `json:"first_content_raw,omitempty"`
+	MiddleFramesRaw []string `json:"middle_frames_raw,omitempty"`
+	FinalFrameRaw   string   `json:"final_frame_raw,omitempty"`
 
 	// Error Breakdown
 	ErrorsTopN []ErrorStat `json:"errors_top_n,omitempty"`
