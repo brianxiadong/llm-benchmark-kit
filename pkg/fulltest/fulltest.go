@@ -431,7 +431,7 @@ func (r *Runner) executeSingleRequest(name, prompt string) TestResult {
 	}
 
 	latency := float64(time.Since(start).Milliseconds())
-	
+
 	// Log summary
 	r.writeLog("")
 	r.writeLog("[%s] SUMMARY", name)
