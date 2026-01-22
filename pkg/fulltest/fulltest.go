@@ -70,7 +70,7 @@ type LongContextTestResult struct {
 // LongContextResult holds all long context test results.
 type LongContextResult struct {
 	Results       []LongContextTestResult `json:"results"`
-	MaxSupported  int                     `json:"max_supported"`   // Maximum supported context length
+	MaxSupported  int                     `json:"max_supported"` // Maximum supported context length
 	AvgTTFTMs     float64                 `json:"avg_ttft_ms"`
 	AvgLatencyMs  float64                 `json:"avg_latency_ms"`
 	AvgThroughput float64                 `json:"avg_throughput"`
