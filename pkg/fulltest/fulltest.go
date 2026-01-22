@@ -88,6 +88,7 @@ type Runner struct {
 	outputDir      string
 	p              provider.Provider
 	httpClient     *http.Client
+	logFile        *os.File
 }
 
 // NewRunner creates a new full test runner.
@@ -121,6 +122,25 @@ func (r *Runner) Run() (*FullTestReport, error) {
 	if err := os.MkdirAll(r.outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
+
+	// Create log file for request/response tracking
+	logPath := filepath.Join(r.outputDir, "request_response.log")
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create log file: %w", err)
+	}
+	r.logFile = logFile
+	defer func() {
+		if r.logFile != nil {
+			r.logFile.Close()
+		}
+	}()
+	r.writeLog("=" + strings.Repeat("=", 79))
+	r.writeLog("LLM Benchmark Kit - Request/Response Log")
+	r.writeLog("Model: %s", r.cfg.ModelName)
+	r.writeLog("URL: %s", r.cfg.URL)
+	r.writeLog("Time: %s", time.Now().Format("2006-01-02 15:04:05"))
+	r.writeLog("=" + strings.Repeat("=", 79))
 
 	r.printHeader()
 
@@ -236,6 +256,14 @@ func (r *Runner) printHeader() {
 	fmt.Println()
 }
 
+// writeLog writes a formatted message to the log file
+func (r *Runner) writeLog(format string, args ...interface{}) {
+	if r.logFile != nil {
+		msg := fmt.Sprintf(format, args...)
+		r.logFile.WriteString(msg + "\n")
+	}
+}
+
 // ========== Phase 1: Performance Tests ==========
 
 func (r *Runner) runFirstCallTest(count int) *PhaseResult {
@@ -318,6 +346,33 @@ func (r *Runner) runMultiTurnTest(turns int) *PhaseResult {
 func (r *Runner) executeSingleRequest(name, prompt string) TestResult {
 	start := time.Now()
 
+	// Build raw request body for logging
+	requestBody := map[string]interface{}{
+		"model": r.cfg.ModelName,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+		"max_tokens": r.cfg.MaxTokens,
+		"stream":     true,
+	}
+	rawRequestBody, _ := json.MarshalIndent(requestBody, "", "  ")
+
+	// Log raw request
+	r.writeLog("")
+	r.writeLog("════════════════════════════════════════════════════════════════")
+	r.writeLog("[%s] REQUEST", name)
+	r.writeLog("════════════════════════════════════════════════════════════════")
+	r.writeLog("Time: %s", start.Format("2006-01-02 15:04:05.000"))
+	r.writeLog("URL: %s", r.cfg.URL)
+	r.writeLog("Method: POST")
+	r.writeLog("Headers:")
+	r.writeLog("  Content-Type: application/json")
+	if r.cfg.Token != "" {
+		r.writeLog("  Authorization: Bearer %s...", r.cfg.Token[:min(10, len(r.cfg.Token))])
+	}
+	r.writeLog("Body:")
+	r.writeLog("%s", string(rawRequestBody))
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.cfg.TimeoutSec)*time.Second)
 	defer cancel()
 
@@ -330,6 +385,10 @@ func (r *Runner) executeSingleRequest(name, prompt string) TestResult {
 	events, err := r.p.StreamChat(ctx, r.cfg, input)
 
 	if err != nil {
+		r.writeLog("")
+		r.writeLog("[%s] RESPONSE (ERROR)", name)
+		r.writeLog("Error: %s", err.Error())
+		r.writeLog("Latency: %.2f ms", float64(time.Since(start).Milliseconds()))
 		return TestResult{
 			Name:      name,
 			Success:   false,
@@ -338,12 +397,30 @@ func (r *Runner) executeSingleRequest(name, prompt string) TestResult {
 		}
 	}
 
+	// Log raw response
+	r.writeLog("")
+	r.writeLog("────────────────────────────────────────────────────────────────")
+	r.writeLog("[%s] RESPONSE (SSE Stream)", name)
+	r.writeLog("────────────────────────────────────────────────────────────────")
+
 	var tokens int
+	var responseContent strings.Builder
+	var rawFrames []string
 	for event := range events {
+		// Capture raw SSE frame
+		if event.Raw != "" {
+			rawFrames = append(rawFrames, event.Raw)
+			r.writeLog("data: %s", event.Raw)
+		}
+		if event.Type == provider.EventContent {
+			responseContent.WriteString(event.Text)
+		}
 		if event.Type == provider.EventUsage && event.Usage != nil {
 			tokens = event.Usage.CompletionTokens
 		}
 		if event.Type == provider.EventError {
+			r.writeLog("Error: %s", event.Err.Error())
+			r.writeLog("Latency: %.2f ms", float64(time.Since(start).Milliseconds()))
 			return TestResult{
 				Name:      name,
 				Success:   false,
@@ -353,10 +430,20 @@ func (r *Runner) executeSingleRequest(name, prompt string) TestResult {
 		}
 	}
 
+	latency := float64(time.Since(start).Milliseconds())
+	
+	// Log summary
+	r.writeLog("")
+	r.writeLog("[%s] SUMMARY", name)
+	r.writeLog("Total SSE Frames: %d", len(rawFrames))
+	r.writeLog("Output Tokens: %d", tokens)
+	r.writeLog("Latency: %.2f ms", latency)
+	r.writeLog("Status: SUCCESS")
+
 	return TestResult{
 		Name:      name,
 		Success:   true,
-		LatencyMs: float64(time.Since(start).Milliseconds()),
+		LatencyMs: latency,
 		Tokens:    tokens,
 	}
 }
@@ -441,10 +528,28 @@ func (r *Runner) runFunctionCallTest() *FunctionCallResult {
 	}
 
 	jsonBody, _ := json.Marshal(requestBody)
+	prettyReq, _ := json.MarshalIndent(requestBody, "", "  ")
+
+	// Log raw request
+	r.writeLog("")
+	r.writeLog("════════════════════════════════════════════════════════════════")
+	r.writeLog("[Function Call Test] REQUEST")
+	r.writeLog("════════════════════════════════════════════════════════════════")
+	r.writeLog("Time: %s", start.Format("2006-01-02 15:04:05.000"))
+	r.writeLog("URL: %s", r.cfg.URL)
+	r.writeLog("Method: POST")
+	r.writeLog("Headers:")
+	r.writeLog("  Content-Type: application/json")
+	if r.cfg.Token != "" {
+		r.writeLog("  Authorization: Bearer %s...", r.cfg.Token[:min(10, len(r.cfg.Token))])
+	}
+	r.writeLog("Body:")
+	r.writeLog("%s", string(prettyReq))
 
 	req, err := http.NewRequest("POST", r.cfg.URL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		result.Error = err.Error()
+		r.writeLog("Error: %s", err.Error())
 		return result
 	}
 
@@ -457,15 +562,44 @@ func (r *Runner) runFunctionCallTest() *FunctionCallResult {
 	if err != nil {
 		result.Error = err.Error()
 		result.LatencyMs = float64(time.Since(start).Milliseconds())
+		r.writeLog("")
+		r.writeLog("[Function Call Test] RESPONSE (ERROR)")
+		r.writeLog("Error: %s", err.Error())
+		r.writeLog("Latency: %.2f ms", result.LatencyMs)
 		return result
 	}
 	defer resp.Body.Close()
 
 	result.LatencyMs = float64(time.Since(start).Milliseconds())
 
+	// Read raw response body
+	body, _ := io.ReadAll(resp.Body)
+
+	// Log raw response
+	r.writeLog("")
+	r.writeLog("────────────────────────────────────────────────────────────────")
+	r.writeLog("[Function Call Test] RESPONSE")
+	r.writeLog("────────────────────────────────────────────────────────────────")
+	r.writeLog("HTTP Status: %d %s", resp.StatusCode, resp.Status)
+	r.writeLog("Headers:")
+	for key, values := range resp.Header {
+		for _, value := range values {
+			r.writeLog("  %s: %s", key, value)
+		}
+	}
+	r.writeLog("Body:")
+	// Pretty print if JSON
+	var prettyResp bytes.Buffer
+	if json.Indent(&prettyResp, body, "", "  ") == nil {
+		r.writeLog("%s", prettyResp.String())
+	} else {
+		r.writeLog("%s", string(body))
+	}
+	r.writeLog("Latency: %.2f ms", result.LatencyMs)
+
 	if resp.StatusCode != 200 {
-		body, _ := io.ReadAll(resp.Body)
 		result.Error = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body))
+		r.writeLog("Status: FAILED")
 		return result
 	}
 
@@ -483,13 +617,16 @@ func (r *Runner) runFunctionCallTest() *FunctionCallResult {
 		} `json:"choices"`
 	}
 
-	body, _ := io.ReadAll(resp.Body)
 	if err := json.Unmarshal(body, &respData); err != nil {
 		result.Error = fmt.Sprintf("Failed to parse response: %v", err)
+		r.writeLog("Parse Error: %s", result.Error)
+		r.writeLog("Status: FAILED")
 		return result
 	}
 
 	// Check if function call is supported
+	r.writeLog("")
+	r.writeLog("[Function Call Test] SUMMARY")
 	if len(respData.Choices) > 0 && len(respData.Choices[0].Message.ToolCalls) > 0 {
 		result.Supported = true
 		toolCall := respData.Choices[0].Message.ToolCalls[0]
@@ -506,8 +643,16 @@ func (r *Runner) runFunctionCallTest() *FunctionCallResult {
 				result.CorrectArgs = city != nil && city != ""
 			}
 		}
+		r.writeLog("Function Call Supported: YES")
+		r.writeLog("Function Name: %s", result.FunctionName)
+		r.writeLog("Arguments: %s", result.Arguments)
+		r.writeLog("Correct Function: %v", result.CorrectFunction)
+		r.writeLog("Correct Args: %v", result.CorrectArgs)
+		r.writeLog("Status: SUCCESS")
 	} else {
 		result.Supported = false
+		r.writeLog("Function Call Supported: NO")
+		r.writeLog("Status: Function Call NOT SUPPORTED")
 	}
 
 	return result
