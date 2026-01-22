@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/config"
+	"github.com/brianxiadong/llm-benchmark-kit/pkg/fulltest"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/provider"
 	_ "github.com/brianxiadong/llm-benchmark-kit/pkg/provider/openai" // Register OpenAI provider
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/runner"
@@ -62,6 +63,9 @@ func main() {
 	// Debug Options
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging of LLM requests and responses")
 
+	// Full Test Mode
+	fullTest := flag.Bool("full-test", false, "Run complete test suite (benchmark + summary)")
+
 	// Version flag
 	showVersion := flag.Bool("version", false, "Show version information")
 
@@ -70,7 +74,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Modes:\n")
 		fmt.Fprintf(os.Stderr, "  Benchmark Mode: Run performance tests against LLM API\n")
-		fmt.Fprintf(os.Stderr, "  Summary Mode:   Summarize meeting transcripts (use -transcript-file)\n\n")
+		fmt.Fprintf(os.Stderr, "  Summary Mode:   Summarize meeting transcripts (use -transcript-file)\n")
+		fmt.Fprintf(os.Stderr, "  Full Test Mode: Run complete test suite (use -full-test)\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
@@ -78,6 +83,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  %s -url https://api.openai.com/v1/chat/completions -model gpt-4 -token $OPENAI_API_KEY\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  # Summary mode\n")
 		fmt.Fprintf(os.Stderr, "  %s -url http://localhost:8000/v1/chat/completions -model qwen -transcript-file meeting.txt\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Full test mode\n")
+		fmt.Fprintf(os.Stderr, "  %s -full-test -url http://localhost:8000/v1/chat/completions -model qwen\n\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -93,6 +100,12 @@ func main() {
 	}
 	if cfg.ModelName == "" {
 		log.Fatal("Error: -model is required")
+	}
+
+	// Check if running in full-test mode
+	if *fullTest {
+		runFullTest(cfg)
+		return
 	}
 
 	// Check if running in summary mode
@@ -199,4 +212,58 @@ func runBenchmarkMode(cfg *config.GlobalConfig) {
 		fmt.Printf("Throughput:   %.2f %s/s\n", report.TokenThroughput, cfg.TokenMode)
 	}
 	fmt.Printf("\nResults saved to: %s\n", cfg.OutputDir)
+}
+
+func runFullTest(cfg *config.GlobalConfig) {
+	// Use moderate benchmark settings
+	moderateCfg := config.ModerateBenchmarkConfig()
+	moderateCfg.URL = cfg.URL
+	moderateCfg.ModelName = cfg.ModelName
+	moderateCfg.Token = cfg.Token
+	moderateCfg.InsecureTLS = cfg.InsecureTLS
+	moderateCfg.CACertPath = cfg.CACertPath
+	moderateCfg.Verbose = cfg.Verbose
+
+	// Auto-generate output directory
+	modelName := cfg.ModelName
+	modelName = strings.ReplaceAll(modelName, "/", "_")
+	modelName = strings.ReplaceAll(modelName, ":", "_")
+	modelName = strings.ReplaceAll(modelName, " ", "_")
+	timestamp := time.Now().Format("20060102_150405")
+	outputDir := filepath.Join("output", fmt.Sprintf("fulltest_%s_%s", modelName, timestamp))
+
+	// Find transcript file - try relative to working directory first
+	transcriptFile := "example/text.txt"
+	if _, err := os.Stat(transcriptFile); os.IsNotExist(err) {
+		// Try relative to executable
+		execPath, _ := os.Executable()
+		execDir := filepath.Dir(execPath)
+		transcriptFile = filepath.Join(execDir, "..", "example", "text.txt")
+		if _, err := os.Stat(transcriptFile); os.IsNotExist(err) {
+			log.Printf("Warning: transcript file not found, summary test will be skipped")
+			transcriptFile = ""
+		}
+	}
+
+	// Get the provider
+	p, err := provider.Get(moderateCfg.ProviderType)
+	if err != nil {
+		log.Fatalf("Error: %v\nAvailable providers: %v", err, provider.List())
+	}
+
+	// Create and run full test
+	r := fulltest.NewRunner(moderateCfg, p, transcriptFile, outputDir)
+	report, err := r.Run()
+	if err != nil {
+		log.Fatalf("Full test failed: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                    Full Test Complete!                         ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("📊 Total Duration: %.2f seconds\n", report.TotalDuration.Seconds())
+	fmt.Printf("📁 Results saved to: %s\n", outputDir)
+	fmt.Printf("📄 Full report: %s/full_test_report.md\n", outputDir)
 }

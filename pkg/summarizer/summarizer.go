@@ -19,6 +19,32 @@ import (
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/workload"
 )
 
+// ChunkMetrics holds performance metrics for a single chunk processing.
+type ChunkMetrics struct {
+	ChunkIndex       int           `json:"chunk_index"`
+	PromptTokens     int           `json:"prompt_tokens"`
+	CompletionTokens int           `json:"completion_tokens"`
+	TotalTokens      int           `json:"total_tokens"`
+	ProcessingTime   time.Duration `json:"processing_time"`
+	StartTime        time.Time     `json:"start_time"`
+	EndTime          time.Time     `json:"end_time"`
+}
+
+// SummaryMetrics holds overall performance metrics for the summarization.
+type SummaryMetrics struct {
+	ModelName             string         `json:"model_name"`
+	TotalChunks           int            `json:"total_chunks"`
+	TotalPromptTokens     int            `json:"total_prompt_tokens"`
+	TotalCompletionTokens int            `json:"total_completion_tokens"`
+	TotalTokens           int            `json:"total_tokens"`
+	TotalProcessingTime   time.Duration  `json:"total_processing_time"`
+	AverageTimePerChunk   time.Duration  `json:"average_time_per_chunk"`
+	TokensPerSecond       float64        `json:"tokens_per_second"`
+	ChunkMetrics          []ChunkMetrics `json:"chunk_metrics"`
+	StartTime             time.Time      `json:"start_time"`
+	EndTime               time.Time      `json:"end_time"`
+}
+
 // Summarizer handles meeting transcript summarization.
 type Summarizer struct {
 	cfg         *config.GlobalConfig
@@ -66,6 +92,13 @@ type ChatResponse struct {
 
 // Run processes the transcript file and generates a meeting summary.
 func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
+	// Initialize metrics
+	metrics := &SummaryMetrics{
+		ModelName:    s.cfg.ModelName,
+		StartTime:    time.Now(),
+		ChunkMetrics: make([]ChunkMetrics, 0),
+	}
+
 	// Read the transcript file
 	content, err := os.ReadFile(transcriptFile)
 	if err != nil {
@@ -86,6 +119,7 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 	// Split into chunks
 	chunks := s.chunker.Split(string(content))
 	fmt.Printf("Transcript split into %d chunks\n", len(chunks))
+	metrics.TotalChunks = len(chunks)
 
 	// Process each chunk iteratively
 	var currentSummary string
@@ -95,11 +129,18 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 		// Build the prompt
 		sysPrompt, userPrompt := BuildPrompt(currentSummary, chunk, s.meetingTime)
 
-		// Call the LLM
-		response, err := s.chat(sysPrompt, userPrompt)
+		// Call the LLM and collect metrics
+		response, chunkMetrics, err := s.chat(sysPrompt, userPrompt, i+1)
 		if err != nil {
 			return "", fmt.Errorf("failed to process chunk %d: %w", i+1, err)
 		}
+
+		// Update metrics
+		metrics.ChunkMetrics = append(metrics.ChunkMetrics, chunkMetrics)
+		metrics.TotalPromptTokens += chunkMetrics.PromptTokens
+		metrics.TotalCompletionTokens += chunkMetrics.CompletionTokens
+		metrics.TotalTokens += chunkMetrics.TotalTokens
+		metrics.TotalProcessingTime += chunkMetrics.ProcessingTime
 
 		currentSummary = s.cleanResponse(response)
 
@@ -109,7 +150,17 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 			fmt.Printf("  Warning: failed to save intermediate result: %v\n", err)
 		}
 
-		fmt.Printf("  ✓ Chunk %d/%d processed, saved to %s\n", i+1, len(chunks), intermediatePath)
+		fmt.Printf("  ✓ Chunk %d/%d processed (tokens: %d, time: %.2fs), saved to %s\n",
+			i+1, len(chunks), chunkMetrics.TotalTokens, chunkMetrics.ProcessingTime.Seconds(), intermediatePath)
+	}
+
+	// Finalize metrics
+	metrics.EndTime = time.Now()
+	if len(chunks) > 0 {
+		metrics.AverageTimePerChunk = metrics.TotalProcessingTime / time.Duration(len(chunks))
+	}
+	if metrics.TotalProcessingTime.Seconds() > 0 {
+		metrics.TokensPerSecond = float64(metrics.TotalCompletionTokens) / metrics.TotalProcessingTime.Seconds()
 	}
 
 	// Save final summary
@@ -119,11 +170,22 @@ func (s *Summarizer) Run(transcriptFile, outputDir string) (string, error) {
 	}
 	fmt.Printf("\n✅ Final summary saved to: %s\n", finalPath)
 
+	// Generate and save performance report
+	if err := s.savePerformanceReport(metrics, outputDir); err != nil {
+		fmt.Printf("  Warning: failed to save performance report: %v\n", err)
+	}
+
 	return currentSummary, nil
 }
 
-// chat sends a non-streaming chat request to the LLM.
-func (s *Summarizer) chat(sysPrompt, userPrompt string) (string, error) {
+// chat sends a non-streaming chat request to the LLM and returns content with metrics.
+func (s *Summarizer) chat(sysPrompt, userPrompt string, chunkIndex int) (string, ChunkMetrics, error) {
+	startTime := time.Now()
+	metrics := ChunkMetrics{
+		ChunkIndex: chunkIndex,
+		StartTime:  startTime,
+	}
+
 	messages := []workload.ChatMessage{
 		{Role: "system", Content: sysPrompt},
 		{Role: "user", Content: userPrompt},
@@ -138,7 +200,7 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string) (string, error) {
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal request: %w", err)
+		return "", metrics, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	// Verbose logging: request
@@ -160,7 +222,7 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string) (string, error) {
 
 	req, err := http.NewRequestWithContext(ctx, "POST", s.cfg.URL, bytes.NewReader(jsonBody))
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return "", metrics, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -171,27 +233,34 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string) (string, error) {
 	client := s.createClient()
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return "", metrics, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
+		return "", metrics, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+		return "", metrics, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp ChatResponse
 	if err := json.Unmarshal(body, &chatResp); err != nil {
-		return "", fmt.Errorf("failed to parse response: %w", err)
+		return "", metrics, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", fmt.Errorf("no response choices")
+		return "", metrics, fmt.Errorf("no response choices")
 	}
+
+	// Update metrics with timing and token usage
+	metrics.EndTime = time.Now()
+	metrics.ProcessingTime = metrics.EndTime.Sub(startTime)
+	metrics.PromptTokens = chatResp.Usage.PromptTokens
+	metrics.CompletionTokens = chatResp.Usage.CompletionTokens
+	metrics.TotalTokens = chatResp.Usage.TotalTokens
 
 	content := chatResp.Choices[0].Message.Content
 
@@ -203,12 +272,67 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string) (string, error) {
 		fmt.Printf("Status: %d\n", resp.StatusCode)
 		fmt.Printf("Tokens: prompt=%d, completion=%d, total=%d\n",
 			chatResp.Usage.PromptTokens, chatResp.Usage.CompletionTokens, chatResp.Usage.TotalTokens)
+		fmt.Printf("Processing time: %.2fs\n", metrics.ProcessingTime.Seconds())
 		fmt.Println("\n[Content]:")
 		fmt.Println(content)
 		fmt.Println(strings.Repeat("=", 80))
 	}
 
-	return content, nil
+	return content, metrics, nil
+}
+
+// savePerformanceReport generates and saves a performance report to the output directory.
+func (s *Summarizer) savePerformanceReport(metrics *SummaryMetrics, outputDir string) error {
+	// Generate markdown report
+	var sb strings.Builder
+	sb.WriteString("# 会议总结性能报告\n\n")
+	sb.WriteString(fmt.Sprintf("**生成时间**: %s\n\n", time.Now().Format("2006-01-02 15:04:05")))
+
+	sb.WriteString("## 总体指标\n\n")
+	sb.WriteString("| 指标 | 值 |\n")
+	sb.WriteString("|------|-----|\n")
+	sb.WriteString(fmt.Sprintf("| 模型名称 | %s |\n", metrics.ModelName))
+	sb.WriteString(fmt.Sprintf("| 总分片数 | %d |\n", metrics.TotalChunks))
+	sb.WriteString(fmt.Sprintf("| 总 Prompt Tokens | %d |\n", metrics.TotalPromptTokens))
+	sb.WriteString(fmt.Sprintf("| 总 Completion Tokens | %d |\n", metrics.TotalCompletionTokens))
+	sb.WriteString(fmt.Sprintf("| 总 Tokens | %d |\n", metrics.TotalTokens))
+	sb.WriteString(fmt.Sprintf("| 总处理时间 | %.2f 秒 |\n", metrics.TotalProcessingTime.Seconds()))
+	sb.WriteString(fmt.Sprintf("| 平均每分片耗时 | %.2f 秒 |\n", metrics.AverageTimePerChunk.Seconds()))
+	sb.WriteString(fmt.Sprintf("| Token 生成速度 | %.2f tokens/秒 |\n", metrics.TokensPerSecond))
+	sb.WriteString(fmt.Sprintf("| 开始时间 | %s |\n", metrics.StartTime.Format("2006-01-02 15:04:05")))
+	sb.WriteString(fmt.Sprintf("| 结束时间 | %s |\n", metrics.EndTime.Format("2006-01-02 15:04:05")))
+
+	sb.WriteString("\n## 分片详情\n\n")
+	sb.WriteString("| 分片 | Prompt Tokens | Completion Tokens | Total Tokens | 耗时(秒) |\n")
+	sb.WriteString("|------|---------------|-------------------|--------------|----------|\n")
+	for _, chunk := range metrics.ChunkMetrics {
+		sb.WriteString(fmt.Sprintf("| %d | %d | %d | %d | %.2f |\n",
+			chunk.ChunkIndex,
+			chunk.PromptTokens,
+			chunk.CompletionTokens,
+			chunk.TotalTokens,
+			chunk.ProcessingTime.Seconds()))
+	}
+
+	// Save markdown report
+	reportPath := filepath.Join(outputDir, "performance_report.md")
+	if err := os.WriteFile(reportPath, []byte(sb.String()), 0644); err != nil {
+		return fmt.Errorf("failed to save performance report: %w", err)
+	}
+	fmt.Printf("📊 Performance report saved to: %s\n", reportPath)
+
+	// Also save as JSON for programmatic access
+	jsonPath := filepath.Join(outputDir, "performance_metrics.json")
+	jsonData, err := json.MarshalIndent(metrics, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics to JSON: %w", err)
+	}
+	if err := os.WriteFile(jsonPath, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to save metrics JSON: %w", err)
+	}
+	fmt.Printf("📊 Performance metrics (JSON) saved to: %s\n", jsonPath)
+
+	return nil
 }
 
 func (s *Summarizer) createClient() *http.Client {

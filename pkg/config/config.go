@@ -47,3 +47,19 @@ func DefaultConfig() *GlobalConfig {
 		ProviderType:  "openai",
 	}
 }
+
+// ModerateBenchmarkConfig returns a configuration for moderate pressure testing.
+// This is used by the full-test mode to run performance benchmarks without
+// overwhelming the LLM service.
+func ModerateBenchmarkConfig() *GlobalConfig {
+	return &GlobalConfig{
+		Concurrency:   3,
+		TotalRequests: 20,
+		Warmup:        2,
+		MaxTokens:     256,
+		TokenMode:     "usage",
+		TimeoutSec:    120,
+		OutputDir:     "./output",
+		ProviderType:  "openai",
+	}
+}
