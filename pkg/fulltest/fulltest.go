@@ -804,6 +804,33 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 			</div>`, escapedContent)
 	}
 
+	// Prepare sample data HTML from BenchmarkReport
+	sampleDataHTML := ""
+	if report.BenchmarkReport != nil {
+		br := report.BenchmarkReport
+		var sampleBuilder strings.Builder
+		sampleBuilder.WriteString(`<div class="phase-card"><h3>采样数据</h3>`)
+		if br.FirstContentRaw != "" {
+			escaped := strings.ReplaceAll(br.FirstContentRaw, "<", "&lt;")
+			escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+			sampleBuilder.WriteString(fmt.Sprintf(`<div class="sample-item"><strong>首帧 (First Content):</strong><div class="sample-content">%s</div></div>`, escaped))
+		}
+		if len(br.MiddleFramesRaw) > 0 {
+			for i, frame := range br.MiddleFramesRaw {
+				escaped := strings.ReplaceAll(frame, "<", "&lt;")
+				escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+				sampleBuilder.WriteString(fmt.Sprintf(`<div class="sample-item"><strong>过程帧 %d:</strong><div class="sample-content">%s</div></div>`, i+1, escaped))
+			}
+		}
+		if br.FinalFrameRaw != "" {
+			escaped := strings.ReplaceAll(br.FinalFrameRaw, "<", "&lt;")
+			escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+			sampleBuilder.WriteString(fmt.Sprintf(`<div class="sample-item"><strong>尾帧 (Final Frame):</strong><div class="sample-content">%s</div></div>`, escaped))
+		}
+		sampleBuilder.WriteString(`</div>`)
+		sampleDataHTML = sampleBuilder.String()
+	}
+
 	// Generate phase result tables
 	generatePhaseHTML := func(phase *PhaseResult, title string) string {
 		if phase == nil {
@@ -946,6 +973,14 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
             font-size: 0.9em;
             line-height: 1.6;
         }
+        .sample-item {
+            margin-bottom: 15px;
+        }
+        .sample-item strong {
+            color: #00d2ff;
+            display: block;
+            margin-bottom: 5px;
+        }
     </style>
 </head>
 <body>
@@ -1015,6 +1050,7 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
             
             <h3 style="color: #00d2ff; margin: 20px 0;">延迟分布图</h3>
             <div class="chart-container" id="latencyChart"></div>
+            %s
         </div>
 
         <div class="section">
@@ -1086,6 +1122,7 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		generatePhaseHTML(report.FirstCallResults, "1.1 冷启动测试 (First Call)"),
 		generatePhaseHTML(report.ConcurrentResults, "1.2 并发测试 (Concurrent)"),
 		generatePhaseHTML(report.MultiTurnResults, "1.3 多轮对话测试 (Multi-turn)"),
+		sampleDataHTML,
 		fcSupported, fcDetails,
 		summaryStatus, summaryDetails, summaryMetricsHTML, summaryContentPreview,
 		time.Now().Format("2006-01-02 15:04:05"),
