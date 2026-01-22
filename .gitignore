@@ -37,4 +37,5 @@ vendor/
 *.tmp
 
 example/
-test/pkg/embedded/text.txt
+test/
+pkg/embedded/text.txt
