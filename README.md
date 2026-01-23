@@ -3,6 +3,8 @@
 高性能 LLM 基准测试工具，用于精准统计 **TTFT / Latency / Throughput / P50/P95/P99**，并生成离线可打开的自包含 HTML 报告。支持一键运行完整测试套件。
 
 ## 特性
+<img width="1490" height="864" alt="image" src="https://github.com/user-attachments/assets/6f7c599b-23f6-44c3-8082-e1ce0817ab76" />
+<img width="1068" height="631" alt="image" src="https://github.com/user-attachments/assets/54058f0f-daf2-4a8d-9768-7667214cf6c1" />
 
 - **一键完整测试**：`-full-test` 模式自动运行性能测试 + 会议纪要生成测试
 - **单文件交付**：CGO=0 静态二进制，客户环境直接运行
