@@ -6,8 +6,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"net/http"
 	"os"
@@ -23,6 +26,18 @@ import (
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/summarizer"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/workload"
 )
+
+//go:embed templates/fulltest_report.html
+var fullTestReportTemplate string
+
+//go:embed assets/js/echarts.min.js
+var echartsJS []byte
+
+//go:embed assets/fonts/JetBrainsMono-Regular.woff2
+var jetBrainsMonoFont []byte
+
+//go:embed assets/fonts/PlusJakartaSans-Variable.woff2
+var plusJakartaSansFont []byte
 
 // TestResult holds result for a single test request.
 type TestResult struct {
@@ -875,8 +890,14 @@ func (r *Runner) executeLongContextRequest(contextLength int) LongContextTestRes
 		result.TTFTMs = result.LatencyMs
 	}
 
-	// Calculate throughput
-	if result.LatencyMs > 0 {
+	// Calculate throughput based on generation phase only (excluding TTFT)
+	// Throughput = output tokens / generation time
+	// Generation time = total latency - TTFT
+	generationTimeMs := result.LatencyMs - result.TTFTMs
+	if generationTimeMs > 0 && outputTokens > 0 {
+		result.Throughput = float64(outputTokens) / (generationTimeMs / 1000.0)
+	} else if result.LatencyMs > 0 && outputTokens > 0 {
+		// Fallback: if generation time is 0 or negative, use total latency
 		result.Throughput = float64(outputTokens) / (result.LatencyMs / 1000.0)
 	}
 
@@ -1050,60 +1071,42 @@ func (r *Runner) writePhaseTable(sb *strings.Builder, phase *PhaseResult) {
 		phase.AvgLatencyMs, phase.Success, phase.Success+phase.Failure, phase.TotalTokens))
 }
 
+// SampleDataItem represents a sample data item for the template.
+type SampleDataItem struct {
+	Title   string
+	Content string
+}
+
+// ChartData holds data for ECharts visualization.
+type ChartData struct {
+	TTFTDistribution    []float64 `json:"ttftDistribution"`
+	LatencyDistribution []float64 `json:"latencyDistribution"`
+	AllNames            []string  `json:"allNames"`
+	FirstCallData       []float64 `json:"firstCallData"`
+	ConcurrentData      []float64 `json:"concurrentData"`
+	MultiTurnData       []float64 `json:"multiTurnData"`
+	LongContext         *struct {
+		Labels     []string  `json:"labels"`
+		TTFT       []float64 `json:"ttft"`
+		Latency    []float64 `json:"latency"`
+		Throughput []float64 `json:"throughput"`
+	} `json:"longContext,omitempty"`
+}
+
 func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) error {
-	// Prepare data for charts
-	var firstCallLatencies, concurrentLatencies, multiTurnLatencies []float64
-	var firstCallNames, concurrentNames, multiTurnNames []string
-
-	if report.FirstCallResults != nil {
-		for _, res := range report.FirstCallResults.Results {
-			firstCallNames = append(firstCallNames, res.Name)
-			firstCallLatencies = append(firstCallLatencies, res.LatencyMs)
-		}
-	}
-	if report.ConcurrentResults != nil {
-		for _, res := range report.ConcurrentResults.Results {
-			concurrentNames = append(concurrentNames, res.Name)
-			concurrentLatencies = append(concurrentLatencies, res.LatencyMs)
-		}
-	}
-	if report.MultiTurnResults != nil {
-		for _, res := range report.MultiTurnResults.Results {
-			multiTurnNames = append(multiTurnNames, res.Name)
-			multiTurnLatencies = append(multiTurnLatencies, res.LatencyMs)
-		}
-	}
-
-	// JSON encode arrays for JavaScript
-	firstCallNamesJSON, _ := json.Marshal(firstCallNames)
-	firstCallLatenciesJSON, _ := json.Marshal(firstCallLatencies)
-	concurrentNamesJSON, _ := json.Marshal(concurrentNames)
-	concurrentLatenciesJSON, _ := json.Marshal(concurrentLatencies)
-	multiTurnNamesJSON, _ := json.Marshal(multiTurnNames)
-	multiTurnLatenciesJSON, _ := json.Marshal(multiTurnLatencies)
-
-	// Function call result
-	fcSupported := "❌ 不支持"
-	fcDetails := ""
-	if report.FunctionCallResult != nil {
-		if report.FunctionCallResult.Supported {
-			fcSupported = "✅ 支持"
-			fcDetails = fmt.Sprintf("函数: %s, 参数: %s, 延迟: %.2f ms",
-				report.FunctionCallResult.FunctionName,
-				report.FunctionCallResult.Arguments,
-				report.FunctionCallResult.LatencyMs)
-		} else if report.FunctionCallResult.Error != "" {
-			fcDetails = report.FunctionCallResult.Error
-		}
+	// Parse template
+	tmpl, err := template.New("fulltest_report").Parse(fullTestReportTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to parse template: %w", err)
 	}
 
 	// Calculate totals
 	totalTests := 0
 	totalSuccess := 0
 	totalTokens := 0
-	var avgLatency float64
-	latencySum := 0.0
+	var latencySum float64
 	latencyCount := 0
+	var allLatencies []float64
 
 	for _, phase := range []*PhaseResult{report.FirstCallResults, report.ConcurrentResults, report.MultiTurnResults} {
 		if phase != nil {
@@ -1114,23 +1117,28 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 				if res.Success {
 					latencySum += res.LatencyMs
 					latencyCount++
+					allLatencies = append(allLatencies, res.LatencyMs)
 				}
 			}
 		}
 	}
+
+	avgLatency := 0.0
 	if latencyCount > 0 {
 		avgLatency = latencySum / float64(latencyCount)
 	}
 
-	// Calculate success rate
 	successRate := 0.0
 	if totalTests > 0 {
 		successRate = float64(totalSuccess) / float64(totalTests) * 100
 	}
 
-	// Get benchmark report metrics if available
+	// Get benchmark metrics
 	var rps, throughput, avgTTFT float64
 	var p50Latency, p95Latency, p99Latency int64
+	var p50TTFT, p95TTFT, p99TTFT int64
+	var ttftDistribution, latencyDistribution []float64
+
 	if report.BenchmarkReport != nil {
 		rps = report.BenchmarkReport.RPS
 		throughput = report.BenchmarkReport.TokenThroughput
@@ -1138,9 +1146,34 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		p50Latency = report.BenchmarkReport.P50LatencyMs
 		p95Latency = report.BenchmarkReport.P95LatencyMs
 		p99Latency = report.BenchmarkReport.P99LatencyMs
+		p50TTFT = report.BenchmarkReport.P50TTFTMs
+		p95TTFT = report.BenchmarkReport.P95TTFTMs
+		p99TTFT = report.BenchmarkReport.P99TTFTMs
+		// Convert int64 slices to float64 for chart data
+		for _, v := range report.BenchmarkReport.TTFTDistribution {
+			ttftDistribution = append(ttftDistribution, float64(v))
+		}
+		for _, v := range report.BenchmarkReport.LatencyDistribution {
+			latencyDistribution = append(latencyDistribution, float64(v))
+		}
 	}
 
-	// Summary status and details
+	// Function call result
+	fcSupported := false
+	fcDetails := "未测试或不支持"
+	if report.FunctionCallResult != nil {
+		if report.FunctionCallResult.Supported {
+			fcSupported = true
+			fcDetails = fmt.Sprintf("函数: %s, 参数: %s, 延迟: %.2f ms",
+				report.FunctionCallResult.FunctionName,
+				report.FunctionCallResult.Arguments,
+				report.FunctionCallResult.LatencyMs)
+		} else if report.FunctionCallResult.Error != "" {
+			fcDetails = report.FunctionCallResult.Error
+		}
+	}
+
+	// Summary status
 	summaryStatus := "⚠️ 跳过"
 	summaryDetails := "未提供会议记录文件"
 	if report.SummaryOutputDir != "" {
@@ -1148,473 +1181,189 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		summaryDetails = fmt.Sprintf("详见 %s 目录", report.SummaryOutputDir)
 	}
 
-	// Prepare summary metrics HTML
-	summaryMetricsHTML := ""
-	if report.SummaryMetrics != nil {
-		m := report.SummaryMetrics
-		summaryMetricsHTML = fmt.Sprintf(`
-			<div class="phase-card">
-				<h3>性能指标</h3>
-				<table>
-					<thead><tr><th>指标</th><th>值</th></tr></thead>
-					<tbody>
-						<tr><td>总分片数</td><td>%d</td></tr>
-						<tr><td>总 Prompt Tokens</td><td>%d</td></tr>
-						<tr><td>总 Completion Tokens</td><td>%d</td></tr>
-						<tr><td>总 Tokens</td><td>%d</td></tr>
-						<tr><td>总处理时间</td><td>%.2f 秒</td></tr>
-						<tr><td>平均每分片耗时</td><td>%.2f 秒</td></tr>
-						<tr><td>Token 生成速度</td><td>%.2f tokens/秒</td></tr>
-					</tbody>
-				</table>
-			</div>`,
-			m.TotalChunks,
-			m.TotalPromptTokens,
-			m.TotalCompletionTokens,
-			m.TotalTokens,
-			m.TotalProcessingTime.Seconds(),
-			m.AverageTimePerChunk.Seconds(),
-			m.TokensPerSecond)
-	}
-
-	// Prepare summary content preview (escape HTML)
-	summaryContentPreview := ""
-	if report.SummaryContent != "" {
-		escapedContent := strings.ReplaceAll(report.SummaryContent, "&", "&amp;")
-		escapedContent = strings.ReplaceAll(escapedContent, "<", "&lt;")
-		escapedContent = strings.ReplaceAll(escapedContent, ">", "&gt;")
-		escapedContent = strings.ReplaceAll(escapedContent, "\"", "&quot;")
-		escapedContent = strings.ReplaceAll(escapedContent, "\n", "<br>")
-		summaryContentPreview = fmt.Sprintf(`
-			<div class="phase-card">
-				<h3>会议纪要预览</h3>
-				<details>
-					<summary style="cursor: pointer; color: #00d2ff; margin-bottom: 10px;">点击展开/收起</summary>
-					<div class="summary-content">%s</div>
-				</details>
-			</div>`, escapedContent)
-	}
-
-	// Prepare sample data HTML from BenchmarkReport
-	sampleDataHTML := ""
+	// Sample data
+	var sampleData []SampleDataItem
 	if report.BenchmarkReport != nil {
 		br := report.BenchmarkReport
-		var sampleBuilder strings.Builder
-		sampleBuilder.WriteString(`<div class="phase-card"><h3>采样数据</h3>`)
 		if br.FirstContentRaw != "" {
 			escaped := strings.ReplaceAll(br.FirstContentRaw, "<", "&lt;")
 			escaped = strings.ReplaceAll(escaped, ">", "&gt;")
-			sampleBuilder.WriteString(fmt.Sprintf(`<div class="sample-item"><strong>首帧 (First Content):</strong><div class="sample-content">%s</div></div>`, escaped))
+			sampleData = append(sampleData, SampleDataItem{
+				Title:   "首帧 (First Content)",
+				Content: escaped,
+			})
 		}
-		if len(br.MiddleFramesRaw) > 0 {
-			for i, frame := range br.MiddleFramesRaw {
-				escaped := strings.ReplaceAll(frame, "<", "&lt;")
-				escaped = strings.ReplaceAll(escaped, ">", "&gt;")
-				sampleBuilder.WriteString(fmt.Sprintf(`<div class="sample-item"><strong>过程帧 %d:</strong><div class="sample-content">%s</div></div>`, i+1, escaped))
-			}
+		for i, frame := range br.MiddleFramesRaw {
+			escaped := strings.ReplaceAll(frame, "<", "&lt;")
+			escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+			sampleData = append(sampleData, SampleDataItem{
+				Title:   fmt.Sprintf("过程帧 %d", i+1),
+				Content: escaped,
+			})
 		}
 		if br.FinalFrameRaw != "" {
 			escaped := strings.ReplaceAll(br.FinalFrameRaw, "<", "&lt;")
 			escaped = strings.ReplaceAll(escaped, ">", "&gt;")
-			sampleBuilder.WriteString(fmt.Sprintf(`<div class="sample-item"><strong>尾帧 (Final Frame):</strong><div class="sample-content">%s</div></div>`, escaped))
+			sampleData = append(sampleData, SampleDataItem{
+				Title:   "尾帧 (Final Frame)",
+				Content: escaped,
+			})
 		}
-		sampleBuilder.WriteString(`</div>`)
-		sampleDataHTML = sampleBuilder.String()
 	}
 
-	// Prepare long context test HTML
-	longContextHTML := ""
-	longContextChartData := ""
+	// Prepare chart data
+	chartData := ChartData{
+		TTFTDistribution:    ttftDistribution,
+		LatencyDistribution: latencyDistribution,
+	}
+
+	// Prepare bar chart data with proper alignment
+	maxLen := 0
+	if report.FirstCallResults != nil && len(report.FirstCallResults.Results) > maxLen {
+		maxLen = len(report.FirstCallResults.Results)
+	}
+	if report.ConcurrentResults != nil && len(report.ConcurrentResults.Results) > maxLen {
+		maxLen = len(report.ConcurrentResults.Results)
+	}
+	if report.MultiTurnResults != nil && len(report.MultiTurnResults.Results) > maxLen {
+		maxLen = len(report.MultiTurnResults.Results)
+	}
+
+	// Create individual series for each phase
+	var allNames []string
+	var firstCallData, concurrentData, multiTurnData []float64
+
+	if report.FirstCallResults != nil {
+		for _, res := range report.FirstCallResults.Results {
+			allNames = append(allNames, res.Name)
+			firstCallData = append(firstCallData, res.LatencyMs)
+			concurrentData = append(concurrentData, 0)
+			multiTurnData = append(multiTurnData, 0)
+		}
+	}
+	if report.ConcurrentResults != nil {
+		for _, res := range report.ConcurrentResults.Results {
+			allNames = append(allNames, res.Name)
+			firstCallData = append(firstCallData, 0)
+			concurrentData = append(concurrentData, res.LatencyMs)
+			multiTurnData = append(multiTurnData, 0)
+		}
+	}
+	if report.MultiTurnResults != nil {
+		for _, res := range report.MultiTurnResults.Results {
+			allNames = append(allNames, res.Name)
+			firstCallData = append(firstCallData, 0)
+			concurrentData = append(concurrentData, 0)
+			multiTurnData = append(multiTurnData, res.LatencyMs)
+		}
+	}
+
+	chartData.AllNames = allNames
+	chartData.FirstCallData = firstCallData
+	chartData.ConcurrentData = concurrentData
+	chartData.MultiTurnData = multiTurnData
+
+	// Long context chart data
 	if report.LongContextResult != nil && len(report.LongContextResult.Results) > 0 {
-		lc := report.LongContextResult
-		var lcBuilder strings.Builder
-		lcBuilder.WriteString(`<div class="phase-card">
-			<h3>测试结果详情</h3>
-			<table>
-				<thead><tr><th>上下文长度</th><th>估算Tokens</th><th>TTFT (ms)</th><th>Latency (ms)</th><th>吞吐 (tok/s)</th><th>状态</th></tr></thead>
-				<tbody>`)
-		for _, res := range lc.Results {
-			status := "✅"
-			statusClass := "success"
-			if !res.Success {
-				status = "❌"
-				statusClass = "error"
-			}
-			lcBuilder.WriteString(fmt.Sprintf(`<tr>
-				<td>%d 字符</td>
-				<td>%d</td>
-				<td>%.2f</td>
-				<td>%.2f</td>
-				<td>%.2f</td>
-				<td class="%s">%s</td>
-			</tr>`, res.ContextLength, res.InputTokens, res.TTFTMs, res.LatencyMs, res.Throughput, statusClass, status))
-		}
-		lcBuilder.WriteString(fmt.Sprintf(`</tbody></table>
-			<div class="phase-summary">
-				<span>最大支持: <strong>%d 字符</strong></span>
-				<span>平均 TTFT: <strong>%.2f ms</strong></span>
-				<span>平均吞吐: <strong>%.2f tok/s</strong></span>
-			</div>
-		</div>`, lc.MaxSupported, lc.AvgTTFTMs, lc.AvgThroughput))
-		longContextHTML = lcBuilder.String()
-
-		// Prepare chart data
-		var contextLengths, ttftValues, latencyValues, throughputValues []string
-		for _, res := range lc.Results {
-			contextLengths = append(contextLengths, fmt.Sprintf("%dK", res.ContextLength/1000))
+		chartData.LongContext = &struct {
+			Labels     []string  `json:"labels"`
+			TTFT       []float64 `json:"ttft"`
+			Latency    []float64 `json:"latency"`
+			Throughput []float64 `json:"throughput"`
+		}{}
+		for _, res := range report.LongContextResult.Results {
+			chartData.LongContext.Labels = append(chartData.LongContext.Labels, fmt.Sprintf("%dK", res.ContextLength/1000))
 			if res.Success {
-				ttftValues = append(ttftValues, fmt.Sprintf("%.2f", res.TTFTMs))
-				latencyValues = append(latencyValues, fmt.Sprintf("%.2f", res.LatencyMs))
-				throughputValues = append(throughputValues, fmt.Sprintf("%.2f", res.Throughput))
+				chartData.LongContext.TTFT = append(chartData.LongContext.TTFT, res.TTFTMs)
+				chartData.LongContext.Latency = append(chartData.LongContext.Latency, res.LatencyMs)
+				chartData.LongContext.Throughput = append(chartData.LongContext.Throughput, res.Throughput)
 			} else {
-				ttftValues = append(ttftValues, "null")
-				latencyValues = append(latencyValues, "null")
-				throughputValues = append(throughputValues, "null")
+				chartData.LongContext.TTFT = append(chartData.LongContext.TTFT, 0)
+				chartData.LongContext.Latency = append(chartData.LongContext.Latency, 0)
+				chartData.LongContext.Throughput = append(chartData.LongContext.Throughput, 0)
 			}
 		}
-		longContextChartData = fmt.Sprintf(`
-		<div class="chart-container" id="longContextChart"></div>
-		<script>
-			var lcTrace1 = {
-				x: [%s],
-				y: [%s],
-				name: 'TTFT (ms)',
-				type: 'scatter',
-				mode: 'lines+markers',
-				marker: { color: '#3498db', size: 10 },
-				yaxis: 'y'
-			};
-			var lcTrace2 = {
-				x: [%s],
-				y: [%s],
-				name: 'Latency (ms)',
-				type: 'scatter',
-				mode: 'lines+markers',
-				marker: { color: '#e74c3c', size: 10 },
-				yaxis: 'y'
-			};
-			var lcLayout = {
-				title: '上下文长度 vs 延迟',
-				xaxis: { title: '上下文长度' },
-				yaxis: { title: '时间 (ms)' },
-				paper_bgcolor: 'rgba(0,0,0,0)',
-				plot_bgcolor: 'rgba(0,0,0,0)',
-				height: 350,
-				legend: { x: 0.02, y: 0.98 }
-			};
-			Plotly.newPlot('longContextChart', [lcTrace1, lcTrace2], lcLayout);
-		</script>`,
-			"'"+strings.Join(contextLengths, "','")+"'",
-			strings.Join(ttftValues, ","),
-			"'"+strings.Join(contextLengths, "','")+"'",
-			strings.Join(latencyValues, ","))
 	}
 
-	// Generate phase result tables
-	generatePhaseHTML := func(phase *PhaseResult, title string) string {
-		if phase == nil {
-			return ""
-		}
-		var html strings.Builder
-		html.WriteString(fmt.Sprintf(`<div class="phase-card">
-			<h3>%s</h3>
-			<table>
-				<thead><tr><th>测试项</th><th>状态</th><th>延迟 (ms)</th><th>Tokens</th></tr></thead>
-				<tbody>`, title))
-		for _, res := range phase.Results {
-			status := "✅"
-			statusClass := "success"
-			if !res.Success {
-				status = "❌"
-				statusClass = "error"
-			}
-			html.WriteString(fmt.Sprintf(`<tr><td>%s</td><td class="%s">%s</td><td>%.2f</td><td>%d</td></tr>`,
-				res.Name, statusClass, status, res.LatencyMs, res.Tokens))
-		}
-		html.WriteString(fmt.Sprintf(`</tbody></table>
-			<div class="phase-summary">
-				<span>平均延迟: <strong>%.2f ms</strong></span>
-				<span>成功率: <strong>%d/%d</strong></span>
-				<span>总 Tokens: <strong>%d</strong></span>
-			</div>
-		</div>`, phase.AvgLatencyMs, phase.Success, phase.Success+phase.Failure, phase.TotalTokens))
-		return html.String()
+	chartDataJSON, _ := json.Marshal(chartData)
+
+	// Summary content HTML
+	summaryContentHTML := ""
+	if report.SummaryContent != "" {
+		escaped := strings.ReplaceAll(report.SummaryContent, "&", "&amp;")
+		escaped = strings.ReplaceAll(escaped, "<", "&lt;")
+		escaped = strings.ReplaceAll(escaped, ">", "&gt;")
+		escaped = strings.ReplaceAll(escaped, "\"", "&quot;")
+		escaped = strings.ReplaceAll(escaped, "\n", "<br>")
+		summaryContentHTML = escaped
 	}
 
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Full Test Report - %s</title>
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%%, #16213e 100%%);
-            min-height: 100vh;
-            color: #e0e0e0;
-            padding: 20px;
-        }
-        .container { max-width: 1400px; margin: 0 auto; }
-        header {
-            text-align: center;
-            padding: 40px 20px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 16px;
-            margin-bottom: 30px;
-            backdrop-filter: blur(10px);
-        }
-        h1 {
-            font-size: 2.5em;
-            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 10px;
-        }
-        .subtitle { color: #888; font-size: 1.1em; }
-        .model-info { margin-top: 15px; color: #aaa; }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        .stat-card {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-            backdrop-filter: blur(10px);
-        }
-        .stat-value {
-            font-size: 2.5em;
-            font-weight: bold;
-            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .stat-label { color: #888; margin-top: 5px; }
-        .section {
-            background: rgba(255,255,255,0.05);
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 25px;
-            backdrop-filter: blur(10px);
-        }
-        .section h2 {
-            color: #3a7bd5;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .phase-card {
-            background: rgba(0,0,0,0.2);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .phase-card h3 { color: #00d2ff; margin-bottom: 15px; }
-        table { width: 100%%; border-collapse: collapse; }
-        th, td { padding: 10px 15px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        th { background: rgba(58, 123, 213, 0.2); color: #fff; }
-        tr:hover { background: rgba(255,255,255,0.05); }
-        .success { color: #2ecc71; }
-        .error { color: #e74c3c; }
-        .phase-summary {
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            gap: 30px;
-            color: #aaa;
-        }
-        .phase-summary strong { color: #00d2ff; }
-        .chart-container { background: #fff; border-radius: 12px; padding: 15px; height: 400px; }
-        .fc-result {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            padding: 20px;
-            background: rgba(0,0,0,0.2);
-            border-radius: 12px;
-        }
-        .fc-status { font-size: 1.5em; }
-        .fc-details { color: #aaa; }
-        .footer { text-align: center; padding: 20px; color: #666; font-size: 0.9em; }
-        .summary-content {
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 8px;
-            max-height: 500px;
-            overflow-y: auto;
-            font-size: 0.9em;
-            line-height: 1.6;
-        }
-        .sample-item {
-            margin-bottom: 15px;
-        }
-        .sample-item strong {
-            color: #00d2ff;
-            display: block;
-            margin-bottom: 5px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🚀 LLM Full Test Report</h1>
-            <p class="subtitle">完整测试报告</p>
-            <div class="model-info">
-                <strong>模型:</strong> %s | 
-                <strong>API:</strong> %s |
-                <strong>耗时:</strong> %.2f 秒
-            </div>
-        </header>
+	// Summary metrics processing time
+	var summaryProcessingTime, summaryAvgChunkTime float64
+	if report.SummaryMetrics != nil {
+		summaryProcessingTime = report.SummaryMetrics.TotalProcessingTime.Seconds()
+		summaryAvgChunkTime = report.SummaryMetrics.AverageTimePerChunk.Seconds()
+	}
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value">%d/%d</div>
-                <div class="stat-label">成功/总测试</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%.1f%%</div>
-                <div class="stat-label">成功率</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%.0f</div>
-                <div class="stat-label">平均延迟 (ms)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%.0f</div>
-                <div class="stat-label">平均 TTFT (ms)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%d</div>
-                <div class="stat-label">P50 延迟 (ms)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%d</div>
-                <div class="stat-label">P95 延迟 (ms)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%d</div>
-                <div class="stat-label">P99 延迟 (ms)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%d</div>
-                <div class="stat-label">总 Tokens</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%.2f</div>
-                <div class="stat-label">RPS</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%.1f</div>
-                <div class="stat-label">Token/s</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">%s</div>
-                <div class="stat-label">Function Call</div>
-            </div>
-        </div>
+	// Calculate phase totals
+	firstCallTotal := 0
+	if report.FirstCallResults != nil {
+		firstCallTotal = report.FirstCallResults.Success + report.FirstCallResults.Failure
+	}
+	concurrentTotal := 0
+	if report.ConcurrentResults != nil {
+		concurrentTotal = report.ConcurrentResults.Success + report.ConcurrentResults.Failure
+	}
+	multiTurnTotal := 0
+	if report.MultiTurnResults != nil {
+		multiTurnTotal = report.MultiTurnResults.Success + report.MultiTurnResults.Failure
+	}
 
-        <div class="section">
-            <h2>📊 Phase 1: 性能测试</h2>
-            %s
-            %s
-            %s
-            
-            <h3 style="color: #00d2ff; margin: 20px 0;">延迟分布图</h3>
-            <div class="chart-container" id="latencyChart"></div>
-            %s
-        </div>
+	// Encode fonts to base64
+	jetBrainsMonoBase64 := base64.StdEncoding.EncodeToString(jetBrainsMonoFont)
+	plusJakartaSansBase64 := base64.StdEncoding.EncodeToString(plusJakartaSansFont)
 
-        <div class="section">
-            <h2>🔧 Phase 2: Function Call 测试</h2>
-            <div class="fc-result">
-                <div class="fc-status">%s</div>
-                <div class="fc-details">%s</div>
-            </div>
-        </div>
+	// Prepare template data
+	data := map[string]interface{}{
+		"Report":                report,
+		"EChartsJS":             template.JS(echartsJS),
+		"JetBrainsMonoBase64":   jetBrainsMonoBase64,
+		"PlusJakartaSansBase64": plusJakartaSansBase64,
+		"DurationSeconds":       report.TotalDuration.Seconds(),
+		"TotalTests":            totalTests,
+		"TotalSuccess":          totalSuccess,
+		"TotalTokens":           totalTokens,
+		"SuccessRate":           successRate,
+		"AvgLatency":            avgLatency,
+		"AvgTTFT":               avgTTFT,
+		"P50Latency":            p50Latency,
+		"P95Latency":            p95Latency,
+		"P99Latency":            p99Latency,
+		"P50TTFT":               p50TTFT,
+		"P95TTFT":               p95TTFT,
+		"P99TTFT":               p99TTFT,
+		"RPS":                   rps,
+		"Throughput":            throughput,
+		"FCSupported":           fcSupported,
+		"FCDetails":             fcDetails,
+		"SummaryStatus":         summaryStatus,
+		"SummaryDetails":        summaryDetails,
+		"SampleData":            sampleData,
+		"ChartDataJSON":         template.JS(chartDataJSON),
+		"SummaryContentHTML":    template.HTML(summaryContentHTML),
+		"SummaryProcessingTime": summaryProcessingTime,
+		"SummaryAvgChunkTime":   summaryAvgChunkTime,
+		"FirstCallTotal":        firstCallTotal,
+		"ConcurrentTotal":       concurrentTotal,
+		"MultiTurnTotal":        multiTurnTotal,
+		"GeneratedAt":           time.Now().Format("2006-01-02 15:04:05"),
+	}
 
-        <div class="section">
-            <h2>� Phase 3: 长上下文测试</h2>
-            %s
-            %s
-        </div>
+	// Execute template
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
 
-        <div class="section">
-            <h2>📝 Phase 4: 会议纪要测试</h2>
-            <div class="fc-result">
-                <div class="fc-status">%s</div>
-                <div class="fc-details">%s</div>
-            </div>
-            %s
-            %s
-        </div>
-
-        <div class="footer">
-            <p>Generated at %s by LLM Benchmark Kit</p>
-        </div>
-    </div>
-
-    <script>
-        // Latency comparison chart
-        var trace1 = {
-            x: %s,
-            y: %s,
-            name: 'First Call',
-            type: 'bar',
-            marker: { color: '#3498db' }
-        };
-        var trace2 = {
-            x: %s,
-            y: %s,
-            name: 'Concurrent',
-            type: 'bar',
-            marker: { color: '#2ecc71' }
-        };
-        var trace3 = {
-            x: %s,
-            y: %s,
-            name: 'Multi-turn',
-            type: 'bar',
-            marker: { color: '#9b59b6' }
-        };
-        
-        var layout = {
-            barmode: 'group',
-            title: '各阶段延迟对比',
-            xaxis: { title: '测试项' },
-            yaxis: { title: '延迟 (ms)' },
-            paper_bgcolor: 'rgba(0,0,0,0)',
-            plot_bgcolor: 'rgba(0,0,0,0)',
-            height: 380,
-        };
-        
-        Plotly.newPlot('latencyChart', [trace1, trace2, trace3], layout);
-    </script>
-</body>
-</html>`,
-		report.ModelName,
-		report.ModelName, report.APIURL, report.TotalDuration.Seconds(),
-		totalSuccess, totalTests, successRate, avgLatency, avgTTFT,
-		p50Latency, p95Latency, p99Latency,
-		totalTokens, rps, throughput, fcSupported,
-		generatePhaseHTML(report.FirstCallResults, "1.1 冷启动测试 (First Call)"),
-		generatePhaseHTML(report.ConcurrentResults, "1.2 并发测试 (Concurrent)"),
-		generatePhaseHTML(report.MultiTurnResults, "1.3 多轮对话测试 (Multi-turn)"),
-		sampleDataHTML,
-		fcSupported, fcDetails,
-		longContextHTML, longContextChartData,
-		summaryStatus, summaryDetails, summaryMetricsHTML, summaryContentPreview,
-		time.Now().Format("2006-01-02 15:04:05"),
-		string(firstCallNamesJSON), string(firstCallLatenciesJSON),
-		string(concurrentNamesJSON), string(concurrentLatenciesJSON),
-		string(multiTurnNamesJSON), string(multiTurnLatenciesJSON))
-
-	return os.WriteFile(outputPath, []byte(html), 0644)
+	return os.WriteFile(outputPath, buf.Bytes(), 0644)
 }

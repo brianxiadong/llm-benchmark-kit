@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Full Test Report - {{.Report.ModelName}}</title>
+    <style>
+        /* Embedded fonts */
+        @font-face {
+            font-family: 'Plus Jakarta Sans';
+            src: url('data:font/woff2;base64,{{.PlusJakartaSansBase64}}') format('woff2');
+            font-weight: 400 800;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'JetBrains Mono';
+            src: url('data:font/woff2;base64,{{.JetBrainsMonoBase64}}') format('woff2');
+            font-weight: 400 600;
+            font-style: normal;
+            font-display: swap;
+        }
+    </style>
+    <script>{{.EChartsJS}}</script>
+    <style>
+        :root {
+            /* Deep space color palette */
+            --bg-void: #030712;
+            --bg-deep: #0a0f1a;
+            --bg-surface: #111827;
+            --bg-elevated: #1f2937;
+            --bg-glass: rgba(17, 24, 39, 0.7);
+
+            /* Accent colors - cosmic gradient */
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --accent-tertiary: #a855f7;
+            --accent-glow: rgba(99, 102, 241, 0.4);
+            --accent-cyan: #22d3ee;
+
+            /* Status colors */
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.3);
+            --error: #f43f5e;
+            --error-glow: rgba(244, 63, 94, 0.3);
+            --warning: #f59e0b;
+
+            /* Text hierarchy */
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-tertiary: #6b7280;
+            --text-muted: #4b5563;
+
+            /* Borders & effects */
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-accent: rgba(99, 102, 241, 0.3);
+
+            /* Typography */
+            --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--font-display);
+            background: var(--bg-void);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Ambient background effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 50%, rgba(139, 92, 246, 0.08), transparent),
+                radial-gradient(ellipse 50% 30% at 20% 80%, rgba(168, 85, 247, 0.06), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* Header section */
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            padding: 3rem 2rem;
+            background: linear-gradient(135deg, var(--bg-glass), rgba(31, 41, 55, 0.5));
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 24px;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), var(--accent-secondary), transparent);
+            opacity: 0.6;
+        }
+
+        .logo-mark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-tertiary));
+            border-radius: 16px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 32px var(--accent-glow);
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        .logo-mark svg {
+            width: 32px;
+            height: 32px;
+            color: white;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.75rem;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-secondary) 50%, var(--accent-tertiary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+
+        .model-info {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .model-info-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .model-info-item strong {
+            color: var(--accent-cyan);
+            font-weight: 600;
+        }
+
+        /* Stats grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 640px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .stat-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            padding: 1.25rem;
+            border-radius: 16px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: fadeInUp 0.6s ease-out backwards;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--border-accent);
+            box-shadow: 0 12px 40px -12px var(--accent-glow);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .stat-card:hover::before {
+            opacity: 1;
+        }
+
+        .stat-value {
+            font-family: var(--font-mono);
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.2;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-value.accent {
+            color: var(--accent-primary);
+        }
+
+        .stat-value.success {
+            color: var(--success);
+        }
+
+        .stat-label {
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Section styling */
+        .section {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            animation: fadeInUp 0.6s ease-out backwards;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .section-icon {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            border-radius: 10px;
+            font-size: 1.1rem;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* Phase card */
+        .phase-card {
+            background: var(--bg-deep);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .phase-card h3 {
+            color: var(--accent-cyan);
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .phase-card h3::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: var(--accent-cyan);
+            border-radius: 50%;
+        }
+
+        /* Table styling */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        th {
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .success {
+            color: var(--success);
+        }
+
+        .error {
+            color: var(--error);
+        }
+
+        /* Phase summary */
+        .phase-summary {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-subtle);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .phase-summary strong {
+            color: var(--accent-cyan);
+            font-family: var(--font-mono);
+        }
+
+        /* Chart container */
+        .chart-container {
+            background: var(--bg-deep);
+            border-radius: 16px;
+            padding: 1rem;
+            height: 380px;
+            margin-bottom: 1rem;
+        }
+
+        .chart-card {
+            background: var(--bg-deep);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .chart-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .chart-title-icon {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+        }
+
+        .chart-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* Percentile grid */
+        .percentile-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .percentile-item {
+            text-align: center;
+            padding: 0.75rem;
+            background: var(--bg-surface);
+            border-radius: 10px;
+        }
+
+        .percentile-label {
+            font-size: 0.7rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.25rem;
+        }
+
+        .percentile-value {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .percentile-item.p50 .percentile-value {
+            color: var(--success);
+        }
+
+        .percentile-item.p95 .percentile-value {
+            color: var(--warning);
+        }
+
+        .percentile-item.p99 .percentile-value {
+            color: var(--error);
+        }
+
+        /* Charts row */
+        .charts-row {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+
+        @media (max-width: 900px) {
+            .charts-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Function call result */
+        .fc-result {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 1.25rem;
+            background: var(--bg-deep);
+            border: 1px solid var(--border-subtle);
+            border-radius: 16px;
+        }
+
+        .fc-status {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .fc-details {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Sample content */
+        .sample-item {
+            margin-bottom: 1rem;
+        }
+
+        .sample-item strong {
+            color: var(--accent-cyan);
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .sample-content {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            padding: 0.875rem 1rem;
+            border-radius: 10px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 150px;
+            overflow-y: auto;
+            color: var(--text-secondary);
+        }
+
+        .sample-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sample-content::-webkit-scrollbar-track {
+            background: var(--bg-surface);
+            border-radius: 3px;
+        }
+
+        .sample-content::-webkit-scrollbar-thumb {
+            background: var(--bg-elevated);
+            border-radius: 3px;
+        }
+
+        /* Summary preview */
+        .summary-preview {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            padding: 1rem;
+            border-radius: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 0.875rem;
+            line-height: 1.7;
+            color: var(--text-secondary);
+        }
+
+        details summary {
+            cursor: pointer;
+            color: var(--accent-cyan);
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            outline: none;
+        }
+
+        details summary:hover {
+            color: var(--accent-primary);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            border-top: 1px solid var(--border-subtle);
+            margin-top: 1rem;
+        }
+
+        footer strong {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 8px 32px var(--accent-glow);
+            }
+            50% {
+                box-shadow: 0 8px 48px var(--accent-glow), 0 0 0 8px rgba(99, 102, 241, 0.1);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-mark">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
+            <h1>LLM Full Test Report</h1>
+            <p class="subtitle">完整测试报告</p>
+            <div class="model-info">
+                <span class="model-info-item"><span>模型:</span> <strong>{{.Report.ModelName}}</strong></span>
+                <span class="model-info-item"><span>API:</span> <strong>{{.Report.APIURL}}</strong></span>
+                <span class="model-info-item"><span>耗时:</span> <strong>{{printf "%.2f" .DurationSeconds}} 秒</strong></span>
+            </div>
+        </header>
+
+        <section class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value accent">{{.TotalSuccess}}/{{.TotalTests}}</div>
+                <div class="stat-label">成功/总测试</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value success">{{printf "%.1f" .SuccessRate}}%</div>
+                <div class="stat-label">成功率</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{printf "%.0f" .AvgLatency}}</div>
+                <div class="stat-label">平均延迟 (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{printf "%.0f" .AvgTTFT}}</div>
+                <div class="stat-label">平均 TTFT (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{.P50Latency}}</div>
+                <div class="stat-label">P50 延迟 (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{.P95Latency}}</div>
+                <div class="stat-label">P95 延迟 (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{.P99Latency}}</div>
+                <div class="stat-label">P99 延迟 (ms)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{.TotalTokens}}</div>
+                <div class="stat-label">总 Tokens</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{printf "%.2f" .RPS}}</div>
+                <div class="stat-label">RPS</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{printf "%.1f" .Throughput}}</div>
+                <div class="stat-label">Token/s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value {{if .FCSupported}}success{{else}}error{{end}}">{{if .FCSupported}}✅ 支持{{else}}❌ 不支持{{end}}</div>
+                <div class="stat-label">Function Call</div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">📊</div>
+                <h2 class="section-title">Phase 1: 性能测试</h2>
+            </div>
+
+            {{if .Report.FirstCallResults}}
+            <div class="phase-card">
+                <h3>1.1 冷启动测试 (First Call)</h3>
+                <table>
+                    <thead><tr><th>测试项</th><th>状态</th><th>延迟 (ms)</th><th>Tokens</th></tr></thead>
+                    <tbody>
+                    {{range .Report.FirstCallResults.Results}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td class="{{if .Success}}success{{else}}error{{end}}">{{if .Success}}✅{{else}}❌{{end}}</td>
+                        <td>{{printf "%.2f" .LatencyMs}}</td>
+                        <td>{{.Tokens}}</td>
+                    </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+                <div class="phase-summary">
+                    <span>平均延迟: <strong>{{printf "%.2f" .Report.FirstCallResults.AvgLatencyMs}} ms</strong></span>
+                    <span>成功率: <strong>{{.Report.FirstCallResults.Success}}/{{.FirstCallTotal}}</strong></span>
+                    <span>总 Tokens: <strong>{{.Report.FirstCallResults.TotalTokens}}</strong></span>
+                </div>
+            </div>
+            {{end}}
+
+            {{if .Report.ConcurrentResults}}
+            <div class="phase-card">
+                <h3>1.2 并发测试 (Concurrent)</h3>
+                <table>
+                    <thead><tr><th>测试项</th><th>状态</th><th>延迟 (ms)</th><th>Tokens</th></tr></thead>
+                    <tbody>
+                    {{range .Report.ConcurrentResults.Results}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td class="{{if .Success}}success{{else}}error{{end}}">{{if .Success}}✅{{else}}❌{{end}}</td>
+                        <td>{{printf "%.2f" .LatencyMs}}</td>
+                        <td>{{.Tokens}}</td>
+                    </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+                <div class="phase-summary">
+                    <span>平均延迟: <strong>{{printf "%.2f" .Report.ConcurrentResults.AvgLatencyMs}} ms</strong></span>
+                    <span>成功率: <strong>{{.Report.ConcurrentResults.Success}}/{{.ConcurrentTotal}}</strong></span>
+                    <span>总 Tokens: <strong>{{.Report.ConcurrentResults.TotalTokens}}</strong></span>
+                </div>
+            </div>
+            {{end}}
+
+            {{if .Report.MultiTurnResults}}
+            <div class="phase-card">
+                <h3>1.3 多轮对话测试 (Multi-turn)</h3>
+                <table>
+                    <thead><tr><th>测试项</th><th>状态</th><th>延迟 (ms)</th><th>Tokens</th></tr></thead>
+                    <tbody>
+                    {{range .Report.MultiTurnResults.Results}}
+                    <tr>
+                        <td>{{.Name}}</td>
+                        <td class="{{if .Success}}success{{else}}error{{end}}">{{if .Success}}✅{{else}}❌{{end}}</td>
+                        <td>{{printf "%.2f" .LatencyMs}}</td>
+                        <td>{{.Tokens}}</td>
+                    </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+                <div class="phase-summary">
+                    <span>平均延迟: <strong>{{printf "%.2f" .Report.MultiTurnResults.AvgLatencyMs}} ms</strong></span>
+                    <span>成功率: <strong>{{.Report.MultiTurnResults.Success}}/{{.MultiTurnTotal}}</strong></span>
+                    <span>总 Tokens: <strong>{{.Report.MultiTurnResults.TotalTokens}}</strong></span>
+                </div>
+            </div>
+            {{end}}
+
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <span class="chart-title-icon"></span>
+                        <span class="chart-title">TTFT Distribution</span>
+                    </div>
+                    <div class="chart-container" id="ttft-chart"></div>
+                    <div class="percentile-grid">
+                        <div class="percentile-item">
+                            <div class="percentile-label">Average</div>
+                            <div class="percentile-value">{{printf "%.0f" .AvgTTFT}}ms</div>
+                        </div>
+                        <div class="percentile-item p50">
+                            <div class="percentile-label">P50</div>
+                            <div class="percentile-value">{{.P50TTFT}}ms</div>
+                        </div>
+                        <div class="percentile-item p95">
+                            <div class="percentile-label">P95</div>
+                            <div class="percentile-value">{{.P95TTFT}}ms</div>
+                        </div>
+                        <div class="percentile-item p99">
+                            <div class="percentile-label">P99</div>
+                            <div class="percentile-value">{{.P99TTFT}}ms</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <span class="chart-title-icon"></span>
+                        <span class="chart-title">Latency Distribution</span>
+                    </div>
+                    <div class="chart-container" id="latency-chart"></div>
+                    <div class="percentile-grid">
+                        <div class="percentile-item">
+                            <div class="percentile-label">Average</div>
+                            <div class="percentile-value">{{printf "%.0f" .AvgLatency}}ms</div>
+                        </div>
+                        <div class="percentile-item p50">
+                            <div class="percentile-label">P50</div>
+                            <div class="percentile-value">{{.P50Latency}}ms</div>
+                        </div>
+                        <div class="percentile-item p95">
+                            <div class="percentile-label">P95</div>
+                            <div class="percentile-value">{{.P95Latency}}ms</div>
+                        </div>
+                        <div class="percentile-item p99">
+                            <div class="percentile-label">P99</div>
+                            <div class="percentile-value">{{.P99Latency}}ms</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title-icon"></span>
+                    <span class="chart-title">延迟对比图</span>
+                </div>
+                <div class="chart-container" id="latency-compare-chart"></div>
+            </div>
+
+            {{if .SampleData}}
+            <div class="phase-card">
+                <h3>采样数据</h3>
+                {{range .SampleData}}
+                <div class="sample-item">
+                    <strong>{{.Title}}</strong>
+                    <div class="sample-content">{{.Content}}</div>
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </section>
+
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">🔧</div>
+                <h2 class="section-title">Phase 2: Function Call 测试</h2>
+            </div>
+            <div class="fc-result">
+                <div class="fc-status">{{if .FCSupported}}✅ 支持{{else}}❌ 不支持{{end}}</div>
+                <div class="fc-details">{{.FCDetails}}</div>
+            </div>
+        </section>
+
+        {{if .Report.LongContextResult}}
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">📏</div>
+                <h2 class="section-title">Phase 3: 长上下文测试</h2>
+            </div>
+            <div class="phase-card">
+                <h3>测试结果详情</h3>
+                <table>
+                    <thead><tr><th>上下文长度</th><th>估算Tokens</th><th>TTFT (ms)</th><th>Latency (ms)</th><th>吞吐 (tok/s)</th><th>状态</th></tr></thead>
+                    <tbody>
+                    {{range .Report.LongContextResult.Results}}
+                    <tr>
+                        <td>{{.ContextLength}} 字符</td>
+                        <td>{{.InputTokens}}</td>
+                        <td>{{printf "%.2f" .TTFTMs}}</td>
+                        <td>{{printf "%.2f" .LatencyMs}}</td>
+                        <td>{{printf "%.2f" .Throughput}}</td>
+                        <td class="{{if .Success}}success{{else}}error{{end}}">{{if .Success}}✅{{else}}❌{{end}}</td>
+                    </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+                <div class="phase-summary">
+                    <span>最大支持: <strong>{{.Report.LongContextResult.MaxSupported}} 字符</strong></span>
+                    <span>平均 TTFT: <strong>{{printf "%.2f" .Report.LongContextResult.AvgTTFTMs}} ms</strong></span>
+                    <span>平均吞吐: <strong>{{printf "%.2f" .Report.LongContextResult.AvgThroughput}} tok/s</strong></span>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title-icon"></span>
+                    <span class="chart-title">上下文长度 vs 延迟</span>
+                </div>
+                <div class="chart-container" id="long-context-chart"></div>
+            </div>
+        </section>
+        {{end}}
+
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">📝</div>
+                <h2 class="section-title">Phase 4: 会议纪要测试</h2>
+            </div>
+            <div class="fc-result">
+                <div class="fc-status">{{.SummaryStatus}}</div>
+                <div class="fc-details">{{.SummaryDetails}}</div>
+            </div>
+
+            {{if .Report.SummaryMetrics}}
+            <div class="phase-card" style="margin-top: 1rem;">
+                <h3>性能指标</h3>
+                <table>
+                    <thead><tr><th>指标</th><th>值</th></tr></thead>
+                    <tbody>
+                        <tr><td>总分片数</td><td>{{.Report.SummaryMetrics.TotalChunks}}</td></tr>
+                        <tr><td>总 Prompt Tokens</td><td>{{.Report.SummaryMetrics.TotalPromptTokens}}</td></tr>
+                        <tr><td>总 Completion Tokens</td><td>{{.Report.SummaryMetrics.TotalCompletionTokens}}</td></tr>
+                        <tr><td>总 Tokens</td><td>{{.Report.SummaryMetrics.TotalTokens}}</td></tr>
+                        <tr><td>总处理时间</td><td>{{printf "%.2f" .SummaryProcessingTime}} 秒</td></tr>
+                        <tr><td>平均每分片耗时</td><td>{{printf "%.2f" .SummaryAvgChunkTime}} 秒</td></tr>
+                        <tr><td>Token 生成速度</td><td>{{printf "%.2f" .Report.SummaryMetrics.TokensPerSecond}} tokens/秒</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            {{end}}
+
+            {{if .Report.SummaryContent}}
+            <div class="phase-card">
+                <h3>会议纪要预览</h3>
+                <details>
+                    <summary>点击展开/收起</summary>
+                    <div class="summary-preview">{{.SummaryContentHTML}}</div>
+                </details>
+            </div>
+            {{end}}
+        </section>
+
+        <footer>
+            <p>Generated at <strong>{{.GeneratedAt}}</strong> by <strong>LLM Benchmark Kit</strong></p>
+        </footer>
+    </div>
+
+    <script>
+        const chartData = {{.ChartDataJSON}};
+        
+        // ECharts theme configuration
+        const chartTheme = {
+            backgroundColor: 'transparent',
+            textStyle: {
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                color: '#9ca3af'
+            },
+            tooltip: {
+                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                textStyle: { color: '#f9fafb' },
+                extraCssText: 'backdrop-filter: blur(8px); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);'
+            }
+        };
+
+        // Create histogram bins
+        function createHistogram(data, numBins = 20) {
+            if (!data || data.length === 0) return { bins: [], counts: [], binEdges: [] };
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            if (min === max) {
+                return { bins: [min.toFixed(0)], counts: [data.length], binEdges: [min] };
+            }
+            const binWidth = (max - min) / numBins;
+            const bins = [];
+            const binEdges = [];
+            const counts = new Array(numBins).fill(0);
+            for (let i = 0; i < numBins; i++) {
+                const edge = min + binWidth * i;
+                binEdges.push(edge);
+                bins.push(Math.round(edge + binWidth / 2));
+            }
+            data.forEach(value => {
+                let binIndex = Math.floor((value - min) / binWidth);
+                if (binIndex >= numBins) binIndex = numBins - 1;
+                if (binIndex < 0) binIndex = 0;
+                counts[binIndex]++;
+            });
+            return { bins, counts, binEdges };
+        }
+
+        // TTFT Distribution Chart
+        if (chartData.ttftDistribution && chartData.ttftDistribution.length > 0) {
+            const ttftChart = echarts.init(document.getElementById('ttft-chart'));
+            const ttftHist = createHistogram(chartData.ttftDistribution);
+            ttftChart.setOption({
+                ...chartTheme,
+                grid: { left: 50, right: 24, top: 24, bottom: 50 },
+                tooltip: {
+                    ...chartTheme.tooltip,
+                    trigger: 'axis',
+                    formatter: function (params) {
+                        const idx = params[0].dataIndex;
+                        const count = params[0].value;
+                        return '<div style="font-family: Plus Jakarta Sans, sans-serif;"><div style="font-weight: 600;">TTFT</div><div style="color: #6366f1; font-weight: 600;">' + count + ' requests</div></div>';
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: ttftHist.bins,
+                    axisLabel: { color: '#6b7280', fontSize: 10, interval: Math.floor(ttftHist.bins.length / 6) || 0 },
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisTick: { show: false },
+                    name: 'TTFT (ms)', nameLocation: 'middle', nameGap: 35, nameTextStyle: { color: '#9ca3af', fontSize: 11 }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLabel: { color: '#6b7280', fontSize: 10 },
+                    splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                    axisLine: { show: false }, axisTick: { show: false }
+                },
+                series: [{
+                    data: ttftHist.counts,
+                    type: 'bar',
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#818cf8' },
+                            { offset: 1, color: '#6366f1' }
+                        ]),
+                        borderRadius: [4, 4, 0, 0]
+                    },
+                    barWidth: '70%'
+                }],
+                animationDuration: 1000,
+                animationEasing: 'cubicOut'
+            });
+            window.addEventListener('resize', () => ttftChart.resize());
+        }
+
+        // Latency Distribution Chart
+        if (chartData.latencyDistribution && chartData.latencyDistribution.length > 0) {
+            const latencyChart = echarts.init(document.getElementById('latency-chart'));
+            const latencyHist = createHistogram(chartData.latencyDistribution);
+            latencyChart.setOption({
+                ...chartTheme,
+                grid: { left: 50, right: 24, top: 24, bottom: 50 },
+                tooltip: {
+                    ...chartTheme.tooltip,
+                    trigger: 'axis',
+                    formatter: function (params) {
+                        const count = params[0].value;
+                        return '<div style="font-family: Plus Jakarta Sans, sans-serif;"><div style="font-weight: 600;">Latency</div><div style="color: #a855f7; font-weight: 600;">' + count + ' requests</div></div>';
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: latencyHist.bins,
+                    axisLabel: { color: '#6b7280', fontSize: 10, interval: Math.floor(latencyHist.bins.length / 6) || 0 },
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisTick: { show: false },
+                    name: 'Latency (ms)', nameLocation: 'middle', nameGap: 35, nameTextStyle: { color: '#9ca3af', fontSize: 11 }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLabel: { color: '#6b7280', fontSize: 10 },
+                    splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                    axisLine: { show: false }, axisTick: { show: false }
+                },
+                series: [{
+                    data: latencyHist.counts,
+                    type: 'bar',
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#c084fc' },
+                            { offset: 1, color: '#a855f7' }
+                        ]),
+                        borderRadius: [4, 4, 0, 0]
+                    },
+                    barWidth: '70%'
+                }],
+                animationDuration: 1000,
+                animationEasing: 'cubicOut',
+                animationDelay: 200
+            });
+            window.addEventListener('resize', () => latencyChart.resize());
+        }
+
+        // Latency Comparison Chart
+        const latencyCompareChart = echarts.init(document.getElementById('latency-compare-chart'));
+        latencyCompareChart.setOption({
+            ...chartTheme,
+            grid: { left: 50, right: 24, top: 40, bottom: 60 },
+            legend: {
+                data: ['First Call', 'Concurrent', 'Multi-turn'],
+                bottom: 10,
+                textStyle: { color: '#9ca3af' }
+            },
+            tooltip: {
+                ...chartTheme.tooltip,
+                trigger: 'axis'
+            },
+            xAxis: {
+                type: 'category',
+                data: chartData.allNames || [],
+                axisLabel: { color: '#6b7280', fontSize: 10, rotate: 30 },
+                axisLine: { lineStyle: { color: '#374151' } }
+            },
+            yAxis: {
+                type: 'value',
+                name: '延迟 (ms)',
+                axisLabel: { color: '#6b7280' },
+                splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                nameTextStyle: { color: '#9ca3af' }
+            },
+            series: [
+                {
+                    name: 'First Call',
+                    type: 'bar',
+                    data: chartData.firstCallData || [],
+                    itemStyle: { color: '#6366f1', borderRadius: [4, 4, 0, 0] }
+                },
+                {
+                    name: 'Concurrent',
+                    type: 'bar',
+                    data: chartData.concurrentData || [],
+                    itemStyle: { color: '#10b981', borderRadius: [4, 4, 0, 0] }
+                },
+                {
+                    name: 'Multi-turn',
+                    type: 'bar',
+                    data: chartData.multiTurnData || [],
+                    itemStyle: { color: '#a855f7', borderRadius: [4, 4, 0, 0] }
+                }
+            ],
+            animationDuration: 1000,
+            animationEasing: 'cubicOut'
+        });
+        window.addEventListener('resize', () => latencyCompareChart.resize());
+
+        // Long Context Chart
+        {{if .Report.LongContextResult}}
+        if (chartData.longContext) {
+            const lcChart = echarts.init(document.getElementById('long-context-chart'));
+            lcChart.setOption({
+                ...chartTheme,
+                grid: { left: 60, right: 60, top: 40, bottom: 60 },
+                legend: {
+                    data: ['TTFT (ms)', 'Latency (ms)', 'Throughput (tok/s)'],
+                    bottom: 10,
+                    textStyle: { color: '#9ca3af' }
+                },
+                tooltip: {
+                    ...chartTheme.tooltip,
+                    trigger: 'axis'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: chartData.longContext.labels || [],
+                    axisLabel: { color: '#6b7280' },
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    name: '上下文长度', nameLocation: 'middle', nameGap: 35
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '时间 (ms)',
+                        axisLabel: { color: '#6b7280' },
+                        splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                        nameTextStyle: { color: '#9ca3af' }
+                    },
+                    {
+                        type: 'value',
+                        name: '吞吐 (tok/s)',
+                        axisLabel: { color: '#6b7280' },
+                        splitLine: { show: false },
+                        nameTextStyle: { color: '#9ca3af' }
+                    }
+                ],
+                series: [
+                    {
+                        name: 'TTFT (ms)',
+                        type: 'line',
+                        data: chartData.longContext.ttft || [],
+                        itemStyle: { color: '#6366f1' },
+                        lineStyle: { width: 3 },
+                        symbol: 'circle',
+                        symbolSize: 8
+                    },
+                    {
+                        name: 'Latency (ms)',
+                        type: 'line',
+                        data: chartData.longContext.latency || [],
+                        itemStyle: { color: '#f43f5e' },
+                        lineStyle: { width: 3 },
+                        symbol: 'circle',
+                        symbolSize: 8
+                    },
+                    {
+                        name: 'Throughput (tok/s)',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        data: chartData.longContext.throughput || [],
+                        itemStyle: { color: '#10b981' },
+                        lineStyle: { width: 3 },
+                        symbol: 'circle',
+                        symbolSize: 8
+                    }
+                ],
+                animationDuration: 1000,
+                animationEasing: 'cubicOut'
+            });
+            window.addEventListener('resize', () => lcChart.resize());
+        }
+        {{end}}
+    </script>
+</body>
+
+</html>

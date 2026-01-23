@@ -1,225 +1,638 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM Benchmark Report - {{.Report.Model}}</title>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        /* Embedded fonts */
+        @font-face {
+            font-family: 'Plus Jakarta Sans';
+            src: url('data:font/woff2;base64,{{.PlusJakartaSansBase64}}') format('woff2');
+            font-weight: 400 800;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        @font-face {
+            font-family: 'JetBrains Mono';
+            src: url('data:font/woff2;base64,{{.JetBrainsMonoBase64}}') format('woff2');
+            font-weight: 400 600;
+            font-style: normal;
+            font-display: swap;
+        }
+    </style>
+    <script>{{.EChartsJS}}</script>
     <style>
         :root {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-card: #334155;
-            --text-primary: #f1f5f9;
-            --text-secondary: #94a3b8;
-            --accent: #3b82f6;
-            --success: #22c55e;
-            --error: #ef4444;
+            /* Deep space color palette */
+            --bg-void: #030712;
+            --bg-deep: #0a0f1a;
+            --bg-surface: #111827;
+            --bg-elevated: #1f2937;
+            --bg-glass: rgba(17, 24, 39, 0.7);
+
+            /* Accent colors - cosmic gradient */
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --accent-tertiary: #a855f7;
+            --accent-glow: rgba(99, 102, 241, 0.4);
+
+            /* Status colors */
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.3);
+            --error: #f43f5e;
+            --error-glow: rgba(244, 63, 94, 0.3);
             --warning: #f59e0b;
+
+            /* Text hierarchy */
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-tertiary: #6b7280;
+            --text-muted: #4b5563;
+
+            /* Borders & effects */
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-accent: rgba(99, 102, 241, 0.3);
+
+            /* Typography */
+            --font-display: 'Plus Jakarta Sans', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
         }
-        
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--bg-primary);
+            font-family: var(--font-display);
+            background: var(--bg-void);
             color: var(--text-primary);
             min-height: 100vh;
-            padding: 2rem;
+            line-height: 1.6;
+            overflow-x: hidden;
         }
-        
+
+        /* Ambient background effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 50%, rgba(139, 92, 246, 0.08), transparent),
+                radial-gradient(ellipse 50% 30% at 20% 80%, rgba(168, 85, 247, 0.06), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* Noise texture overlay */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 1;
+        }
+
         .container {
             max-width: 1400px;
             margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 2;
         }
-        
+
+        /* Header section */
         header {
             text-align: center;
-            margin-bottom: 2rem;
-            padding: 2rem;
-            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
-            border-radius: 16px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            margin-bottom: 3rem;
+            padding: 3rem 2rem;
+            background: linear-gradient(135deg, var(--bg-glass), rgba(31, 41, 55, 0.5));
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 24px;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInDown 0.8s ease-out;
         }
-        
+
+        header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--accent-primary), var(--accent-secondary), transparent);
+            opacity: 0.6;
+        }
+
+        .logo-mark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-tertiary));
+            border-radius: 16px;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 32px var(--accent-glow);
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        .logo-mark svg {
+            width: 32px;
+            height: 32px;
+            color: white;
+        }
+
         h1 {
-            font-size: 2.5rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, #60a5fa, #a78bfa);
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -0.03em;
+            margin-bottom: 0.75rem;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-secondary) 50%, var(--accent-tertiary) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        
+
         .subtitle {
             color: var(--text-secondary);
-            font-size: 1.1rem;
+            font-size: 1rem;
+            font-weight: 500;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1.5rem;
         }
-        
+
+        .subtitle-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .subtitle-item strong {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .subtitle-dot {
+            width: 4px;
+            height: 4px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+        }
+
+        /* Metrics grid */
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1rem;
+            margin-bottom: 2.5rem;
         }
-        
+
+        @media (max-width: 1200px) {
+            .metrics-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 640px) {
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
         .metric-card {
-            background: var(--bg-secondary);
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-            transition: transform 0.2s, box-shadow 0.2s;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            padding: 1.25rem;
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: fadeInUp 0.6s ease-out backwards;
         }
-        
+
+        .metric-card:nth-child(1) {
+            animation-delay: 0.1s;
+        }
+
+        .metric-card:nth-child(2) {
+            animation-delay: 0.15s;
+        }
+
+        .metric-card:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+
+        .metric-card:nth-child(4) {
+            animation-delay: 0.25s;
+        }
+
+        .metric-card:nth-child(5) {
+            animation-delay: 0.3s;
+        }
+
+        .metric-card:nth-child(6) {
+            animation-delay: 0.35s;
+        }
+
         .metric-card:hover {
             transform: translateY(-4px);
-            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.2);
+            border-color: var(--border-accent);
+            box-shadow: 0 12px 40px -12px var(--accent-glow);
         }
-        
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .metric-card:hover::before {
+            opacity: 1;
+        }
+
         .metric-label {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
+            font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.1em;
             margin-bottom: 0.5rem;
         }
-        
+
         .metric-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.2;
         }
-        
+
+        .metric-value.accent {
+            color: var(--accent-primary);
+        }
+
         .metric-value.success {
             color: var(--success);
         }
-        
+
         .metric-value.error {
             color: var(--error);
         }
-        
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        
-        .chart-card {
-            background: var(--bg-secondary);
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-        }
-        
-        .chart-title {
-            font-size: 1.25rem;
-            margin-bottom: 1rem;
-            color: var(--text-primary);
-        }
-        
-        .chart-container {
-            height: 350px;
-        }
-        
-        .percentile-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-        }
-        
-        .percentile-table th,
-        .percentile-table td {
-            padding: 0.75rem;
-            text-align: left;
-            border-bottom: 1px solid var(--bg-card);
-        }
-        
-        .percentile-table th {
-            color: var(--text-secondary);
+
+        .metric-unit {
+            font-size: 0.875rem;
+            color: var(--text-tertiary);
             font-weight: 500;
         }
-        
-        .errors-section {
-            background: var(--bg-secondary);
-            padding: 1.5rem;
-            border-radius: 12px;
-            margin-bottom: 2rem;
+
+        /* Charts section */
+        .charts-section {
+            margin-bottom: 2.5rem;
         }
-        
-        .error-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 0.75rem;
-            background: var(--bg-card);
-            border-radius: 8px;
-            margin-bottom: 0.5rem;
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
         }
-        
-        .error-key {
-            color: var(--error);
-            font-family: monospace;
-        }
-        
-        .error-count {
-            font-weight: 700;
-        }
-        
-        .sample-section {
-            background: var(--bg-secondary);
-            padding: 1.5rem;
-            border-radius: 12px;
-        }
-        
-        .sample-content {
-            background: var(--bg-card);
-            padding: 1rem;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 0.875rem;
-            white-space: pre-wrap;
-            word-break: break-all;
-            max-height: 200px;
-            overflow-y: auto;
-            color: var(--text-secondary);
-        }
-        
-        footer {
-            text-align: center;
-            padding: 2rem;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-        }
-        
-        @media (max-width: 768px) {
+
+        @media (max-width: 900px) {
             .charts-grid {
                 grid-template-columns: 1fr;
             }
-            
-            h1 {
-                font-size: 1.75rem;
+        }
+
+        .chart-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 1.5rem;
+            animation: fadeInUp 0.6s ease-out backwards;
+            animation-delay: 0.4s;
+        }
+
+        .chart-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .chart-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chart-title-icon {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+        }
+
+        .chart-container {
+            height: 320px;
+            margin-bottom: 1rem;
+        }
+
+        /* Percentile table */
+        .percentile-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        .percentile-item {
+            text-align: center;
+            padding: 0.75rem;
+            background: var(--bg-surface);
+            border-radius: 10px;
+        }
+
+        .percentile-label {
+            font-size: 0.7rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.25rem;
+        }
+
+        .percentile-value {
+            font-family: var(--font-mono);
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .percentile-item.p50 .percentile-value {
+            color: var(--success);
+        }
+
+        .percentile-item.p95 .percentile-value {
+            color: var(--warning);
+        }
+
+        .percentile-item.p99 .percentile-value {
+            color: var(--error);
+        }
+
+        /* Secondary charts row */
+        .secondary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        @media (max-width: 900px) {
+            .secondary-grid {
+                grid-template-columns: 1fr;
             }
+        }
+
+        /* Errors section */
+        .errors-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 1.5rem;
+        }
+
+        .error-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .error-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.875rem 1rem;
+            background: rgba(244, 63, 94, 0.08);
+            border: 1px solid rgba(244, 63, 94, 0.15);
+            border-radius: 10px;
+            transition: all 0.2s;
+        }
+
+        .error-item:hover {
+            background: rgba(244, 63, 94, 0.12);
+            border-color: rgba(244, 63, 94, 0.25);
+        }
+
+        .error-key {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: var(--error);
+            max-width: 80%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .error-count {
+            font-family: var(--font-mono);
+            font-weight: 600;
+            color: var(--text-primary);
+            background: rgba(244, 63, 94, 0.2);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        /* Sample section */
+        .sample-section {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 2.5rem;
+            animation: fadeInUp 0.6s ease-out backwards;
+            animation-delay: 0.6s;
+        }
+
+        .sample-header {
+            margin-bottom: 1.25rem;
+        }
+
+        .sample-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-tertiary);
+            margin-bottom: 0.5rem;
+        }
+
+        .sample-frame-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .sample-content {
+            background: var(--bg-deep);
+            border: 1px solid var(--border-subtle);
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-break: break-all;
+            max-height: 180px;
+            overflow-y: auto;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+
+        .sample-content::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sample-content::-webkit-scrollbar-track {
+            background: var(--bg-surface);
+            border-radius: 3px;
+        }
+
+        .sample-content::-webkit-scrollbar-thumb {
+            background: var(--bg-elevated);
+            border-radius: 3px;
+        }
+
+        .sample-content::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            border-top: 1px solid var(--border-subtle);
+        }
+
+        footer strong {
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        /* Animations */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                box-shadow: 0 8px 32px var(--accent-glow);
+            }
+
+            50% {
+                box-shadow: 0 8px 48px var(--accent-glow), 0 0 0 8px rgba(99, 102, 241, 0.1);
+            }
+        }
+
+        /* Chart theme overrides */
+        .echarts-tooltip {
+            font-family: var(--font-display) !important;
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <header>
+            <div class="logo-mark">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                    stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+            </div>
             <h1>LLM Benchmark Report</h1>
-            <p class="subtitle">
-                Provider: <strong>{{.Report.Provider}}</strong> | 
-                Model: <strong>{{.Report.Model}}</strong> | 
-                {{.Report.StartedAt}}
-            </p>
+            <div class="subtitle">
+                <span class="subtitle-item">
+                    <span>Provider:</span>
+                    <strong>{{.Report.Provider}}</strong>
+                </span>
+                <span class="subtitle-dot"></span>
+                <span class="subtitle-item">
+                    <span>Model:</span>
+                    <strong>{{.Report.Model}}</strong>
+                </span>
+                <span class="subtitle-dot"></span>
+                <span class="subtitle-item">
+                    <span>{{.Report.StartedAt}}</span>
+                </span>
+            </div>
         </header>
-        
+
         <section class="metrics-grid">
             <div class="metric-card">
                 <div class="metric-label">Total Requests</div>
-                <div class="metric-value">{{.Report.TotalRequests}}</div>
+                <div class="metric-value accent">{{.Report.TotalRequests}}</div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Success Rate</div>
@@ -234,293 +647,438 @@
                 <div class="metric-value" id="avg-latency"></div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">RPS</div>
-                <div class="metric-value" id="rps"></div>
+                <div class="metric-label">Throughput</div>
+                <div class="metric-value accent" id="rps"></div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Throughput ({{.Report.TokenMode}})</div>
+                <div class="metric-label">Token Rate <span class="metric-unit">({{.Report.TokenMode}})</span></div>
                 <div class="metric-value" id="throughput"></div>
             </div>
         </section>
-        
-        <section class="charts-grid">
-            <div class="chart-card">
-                <h3 class="chart-title">TTFT Distribution</h3>
-                <div class="chart-container" id="ttft-chart"></div>
-                <table class="percentile-table">
-                    <tr>
-                        <th>Percentile</th>
-                        <th>P50</th>
-                        <th>P95</th>
-                        <th>P99</th>
-                    </tr>
-                    <tr>
-                        <td>TTFT</td>
-                        <td>{{.Report.P50TTFTMs}} ms</td>
-                        <td>{{.Report.P95TTFTMs}} ms</td>
-                        <td>{{.Report.P99TTFTMs}} ms</td>
-                    </tr>
-                </table>
-            </div>
-            <div class="chart-card">
-                <h3 class="chart-title">Latency Distribution</h3>
-                <div class="chart-container" id="latency-chart"></div>
-                <table class="percentile-table">
-                    <tr>
-                        <th>Percentile</th>
-                        <th>P50</th>
-                        <th>P95</th>
-                        <th>P99</th>
-                    </tr>
-                    <tr>
-                        <td>Latency</td>
-                        <td>{{.Report.P50LatencyMs}} ms</td>
-                        <td>{{.Report.P95LatencyMs}} ms</td>
-                        <td>{{.Report.P99LatencyMs}} ms</td>
-                    </tr>
-                </table>
-            </div>
-        </section>
-        
-        <section class="charts-grid">
-            <div class="chart-card">
-                <h3 class="chart-title">Success / Failure Distribution</h3>
-                <div class="chart-container" id="success-chart"></div>
-            </div>
-            {{if .Report.ErrorsTopN}}
-            <div class="chart-card">
-                <h3 class="chart-title">Top Errors</h3>
-                <div class="errors-section" style="background: transparent; padding: 0;">
-                    {{range .Report.ErrorsTopN}}
-                    <div class="error-item">
-                        <span class="error-key">{{.Key}}</span>
-                        <span class="error-count">{{.Count}}</span>
+
+        <section class="charts-section">
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <span class="chart-title-icon"></span>
+                            TTFT Distribution
+                        </h3>
                     </div>
-                    {{end}}
+                    <div class="chart-container" id="ttft-chart"></div>
+                    <div class="percentile-grid">
+                        <div class="percentile-item">
+                            <div class="percentile-label">Average</div>
+                            <div class="percentile-value" id="avg-ttft-table"></div>
+                        </div>
+                        <div class="percentile-item p50">
+                            <div class="percentile-label">P50</div>
+                            <div class="percentile-value">{{.Report.P50TTFTMs}}ms</div>
+                        </div>
+                        <div class="percentile-item p95">
+                            <div class="percentile-label">P95</div>
+                            <div class="percentile-value">{{.Report.P95TTFTMs}}ms</div>
+                        </div>
+                        <div class="percentile-item p99">
+                            <div class="percentile-label">P99</div>
+                            <div class="percentile-value">{{.Report.P99TTFTMs}}ms</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <span class="chart-title-icon"></span>
+                            Latency Distribution
+                        </h3>
+                    </div>
+                    <div class="chart-container" id="latency-chart"></div>
+                    <div class="percentile-grid">
+                        <div class="percentile-item">
+                            <div class="percentile-label">Average</div>
+                            <div class="percentile-value" id="avg-latency-table"></div>
+                        </div>
+                        <div class="percentile-item p50">
+                            <div class="percentile-label">P50</div>
+                            <div class="percentile-value">{{.Report.P50LatencyMs}}ms</div>
+                        </div>
+                        <div class="percentile-item p95">
+                            <div class="percentile-label">P95</div>
+                            <div class="percentile-value">{{.Report.P95LatencyMs}}ms</div>
+                        </div>
+                        <div class="percentile-item p99">
+                            <div class="percentile-label">P99</div>
+                            <div class="percentile-value">{{.Report.P99LatencyMs}}ms</div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            {{end}}
+
+            <div class="secondary-grid">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <span class="chart-title-icon"></span>
+                            Success / Failure
+                        </h3>
+                    </div>
+                    <div class="chart-container" id="success-chart"></div>
+                </div>
+
+                {{if .Report.ErrorsTopN}}
+                <div class="errors-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <span class="chart-title-icon" style="background: var(--error);"></span>
+                            Top Errors
+                        </h3>
+                    </div>
+                    <div class="error-list">
+                        {{range .Report.ErrorsTopN}}
+                        <div class="error-item">
+                            <span class="error-key" title="{{.Key}}">{{.Key}}</span>
+                            <span class="error-count">{{.Count}}</span>
+                        </div>
+                        {{end}}
+                    </div>
+                </div>
+                {{end}}
+            </div>
         </section>
-        
+
         {{if or .Report.FirstContentRaw .Report.MiddleFramesRaw .Report.FinalFrameRaw}}
         <section class="sample-section">
-            <h3 class="chart-title">Sample Data</h3>
+            <div class="sample-header">
+                <div class="chart-title">
+                    <span class="chart-title-icon"></span>
+                    Sample Response Data
+                </div>
+            </div>
             {{if .Report.FirstContentRaw}}
-            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">First Content Frame (Frame 1)</h4>
+            <div class="sample-frame-title">First Content Frame</div>
             <div class="sample-content">{{.Report.FirstContentRaw}}</div>
             {{end}}
             {{if .Report.MiddleFramesRaw}}
             {{range $index, $frame := .Report.MiddleFramesRaw}}
-            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">Middle Frame {{if eq $index 0}}(Frame 2){{else if eq $index 1}}(Frame 5){{else if eq $index 2}}(Frame 10){{end}}</h4>
+            <div class="sample-frame-title">Middle Frame {{if eq $index 0}}#2{{else if eq $index 1}}#5{{else if eq
+                $index 2}}#10{{end}}</div>
             <div class="sample-content">{{$frame}}</div>
             {{end}}
             {{end}}
             {{if .Report.FinalFrameRaw}}
-            <h4 style="color: var(--text-secondary); margin: 1rem 0 0.5rem;">Final Frame</h4>
+            <div class="sample-frame-title">Final Frame</div>
             <div class="sample-content">{{.Report.FinalFrameRaw}}</div>
             {{end}}
         </section>
         {{end}}
-        
+
         <footer>
-            <p>Generated by LLM Benchmark Kit | Wall Time: {{.Report.WallTimeMs}} ms</p>
+            <p>Generated by <strong>LLM Benchmark Kit</strong> · Wall Time: <strong>{{.Report.WallTimeMs}}ms</strong>
+            </p>
         </footer>
     </div>
-    
+
     <script>
         const report = {{.ReportJSON}};
-        
-        // Format numbers
-        document.getElementById('success-rate').textContent = (report.success_rate * 100).toFixed(2) + '%';
-        document.getElementById('avg-ttft').textContent = report.avg_ttft_ms.toFixed(2) + ' ms';
-        document.getElementById('avg-latency').textContent = report.avg_latency_ms.toFixed(2) + ' ms';
-        document.getElementById('rps').textContent = report.rps.toFixed(2);
-        document.getElementById('throughput').textContent = report.token_throughput.toFixed(2) + '/s';
-        
+
+        // Format numbers with animation-ready values
+        const successRate = (report.success_rate * 100).toFixed(2);
+        const avgTtft = report.avg_ttft_ms.toFixed(2);
+        const avgLatency = report.avg_latency_ms.toFixed(2);
+        const rps = report.rps.toFixed(2);
+        const throughput = report.token_throughput.toFixed(2);
+
+        document.getElementById('success-rate').textContent = successRate + '%';
+        document.getElementById('avg-ttft').innerHTML = avgTtft + '<span class="metric-unit">ms</span>';
+        document.getElementById('avg-latency').innerHTML = avgLatency + '<span class="metric-unit">ms</span>';
+        document.getElementById('rps').innerHTML = rps + '<span class="metric-unit">req/s</span>';
+        document.getElementById('throughput').innerHTML = throughput + '<span class="metric-unit">/s</span>';
+        document.getElementById('avg-ttft-table').textContent = avgTtft + 'ms';
+        document.getElementById('avg-latency-table').textContent = avgLatency + 'ms';
+
+        // ECharts theme configuration
+        const chartTheme = {
+            backgroundColor: 'transparent',
+            textStyle: {
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
+                color: '#9ca3af'
+            },
+            title: {
+                textStyle: { color: '#f9fafb' }
+            },
+            tooltip: {
+                backgroundColor: 'rgba(17, 24, 39, 0.95)',
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                textStyle: { color: '#f9fafb' },
+                extraCssText: 'backdrop-filter: blur(8px); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);'
+            }
+        };
+
         // Create histogram bins
-        function createHistogram(data, numBins = 30) {
+        function createHistogram(data, numBins = 25) {
             if (!data || data.length === 0) return { bins: [], counts: [], binEdges: [] };
-            
+
             const min = Math.min(...data);
             const max = Math.max(...data);
-            
-            // Avoid division by zero
+
             if (min === max) {
-                return { 
-                    bins: [min.toFixed(1)], 
+                return {
+                    bins: [min.toFixed(0)],
                     counts: [data.length],
                     binEdges: [min]
                 };
             }
-            
+
             const binWidth = (max - min) / numBins;
-            
             const bins = [];
             const binEdges = [];
             const counts = new Array(numBins).fill(0);
-            
+
             for (let i = 0; i < numBins; i++) {
                 const edge = min + binWidth * i;
                 binEdges.push(edge);
-                bins.push((edge + binWidth / 2).toFixed(1));
+                bins.push(Math.round(edge + binWidth / 2));
             }
-            
+
             data.forEach(value => {
                 let binIndex = Math.floor((value - min) / binWidth);
-                // Handle edge case where value === max
                 if (binIndex >= numBins) binIndex = numBins - 1;
                 if (binIndex < 0) binIndex = 0;
                 counts[binIndex]++;
             });
-            
+
             return { bins, counts, binEdges };
         }
-        
+
         // TTFT Chart
         const ttftChart = echarts.init(document.getElementById('ttft-chart'));
         const ttftHist = createHistogram(report.ttft_distribution_ms || []);
         ttftChart.setOption({
-            tooltip: { 
+            ...chartTheme,
+            grid: { left: 50, right: 24, top: 24, bottom: 50 },
+            tooltip: {
+                ...chartTheme.tooltip,
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: function (params) {
                     const idx = params[0].dataIndex;
                     const count = params[0].value;
                     const edge = ttftHist.binEdges[idx];
-                    const nextEdge = idx + 1 < ttftHist.binEdges.length 
-                        ? ttftHist.binEdges[idx + 1] 
+                    const nextEdge = idx + 1 < ttftHist.binEdges.length
+                        ? ttftHist.binEdges[idx + 1]
                         : edge + (ttftHist.binEdges[1] - ttftHist.binEdges[0]);
-                    return `Range: ${edge.toFixed(1)} - ${nextEdge.toFixed(1)} ms<br/>Count: ${count}`;
+                    return `<div style="font-family: 'Plus Jakarta Sans', sans-serif;">
+                        <div style="font-weight: 600; margin-bottom: 4px;">TTFT Range</div>
+                        <div style="color: #9ca3af;">${edge.toFixed(0)} - ${nextEdge.toFixed(0)} ms</div>
+                        <div style="color: #6366f1; font-weight: 600; margin-top: 4px;">${count} requests</div>
+                    </div>`;
                 }
             },
             xAxis: {
                 type: 'category',
                 data: ttftHist.bins,
-                axisLabel: { 
-                    color: '#94a3b8',
-                    interval: Math.floor(ttftHist.bins.length / 10) || 0,
-                    rotate: 0
+                axisLabel: {
+                    color: '#6b7280',
+                    fontSize: 10,
+                    interval: Math.floor(ttftHist.bins.length / 6) || 0
                 },
-                axisLine: { lineStyle: { color: '#334155' } },
+                axisLine: { lineStyle: { color: '#374151' } },
+                axisTick: { show: false },
                 name: 'TTFT (ms)',
                 nameLocation: 'middle',
-                nameGap: 30,
-                nameTextStyle: { color: '#94a3b8' }
+                nameGap: 35,
+                nameTextStyle: { color: '#9ca3af', fontSize: 11 }
             },
             yAxis: {
                 type: 'value',
-                axisLabel: { color: '#94a3b8' },
-                splitLine: { lineStyle: { color: '#334155' } },
-                name: 'Count',
-                nameTextStyle: { color: '#94a3b8' }
+                axisLabel: { color: '#6b7280', fontSize: 10 },
+                splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                axisLine: { show: false },
+                axisTick: { show: false }
             },
             series: [{
                 data: ttftHist.counts,
                 type: 'bar',
                 itemStyle: {
                     color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                        { offset: 0, color: '#60a5fa' },
-                        { offset: 1, color: '#3b82f6' }
-                    ])
+                        { offset: 0, color: '#818cf8' },
+                        { offset: 1, color: '#6366f1' }
+                    ]),
+                    borderRadius: [4, 4, 0, 0]
                 },
-                barWidth: '80%',
-                markLine: {
-                    data: [
-                        { xAxis: ttftHist.bins.findIndex(b => parseFloat(b) >= report.p50_ttft_ms), name: 'P50', lineStyle: { color: '#10b981' } },
-                        { xAxis: ttftHist.bins.findIndex(b => parseFloat(b) >= report.p95_ttft_ms), name: 'P95', lineStyle: { color: '#f59e0b' } },
-                        { xAxis: ttftHist.bins.findIndex(b => parseFloat(b) >= report.p99_ttft_ms), name: 'P99', lineStyle: { color: '#ef4444' } }
-                    ].filter(d => d.xAxis >= 0),
-                    label: { formatter: '{b}' }
+                barWidth: '70%',
+                emphasis: {
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#a5b4fc' },
+                            { offset: 1, color: '#818cf8' }
+                        ])
+                    }
                 }
-            }]
+            }],
+            animationDuration: 1000,
+            animationEasing: 'cubicOut'
         });
-        
+
         // Latency Chart
         const latencyChart = echarts.init(document.getElementById('latency-chart'));
         const latencyHist = createHistogram(report.latency_distribution_ms || []);
         latencyChart.setOption({
-            tooltip: { 
+            ...chartTheme,
+            grid: { left: 50, right: 24, top: 24, bottom: 50 },
+            tooltip: {
+                ...chartTheme.tooltip,
                 trigger: 'axis',
-                formatter: function(params) {
+                formatter: function (params) {
                     const idx = params[0].dataIndex;
                     const count = params[0].value;
                     const edge = latencyHist.binEdges[idx];
-                    const nextEdge = idx + 1 < latencyHist.binEdges.length 
-                        ? latencyHist.binEdges[idx + 1] 
+                    const nextEdge = idx + 1 < latencyHist.binEdges.length
+                        ? latencyHist.binEdges[idx + 1]
                         : edge + (latencyHist.binEdges[1] - latencyHist.binEdges[0]);
-                    return `Range: ${edge.toFixed(1)} - ${nextEdge.toFixed(1)} ms<br/>Count: ${count}`;
+                    return `<div style="font-family: 'Plus Jakarta Sans', sans-serif;">
+                        <div style="font-weight: 600; margin-bottom: 4px;">Latency Range</div>
+                        <div style="color: #9ca3af;">${edge.toFixed(0)} - ${nextEdge.toFixed(0)} ms</div>
+                        <div style="color: #a855f7; font-weight: 600; margin-top: 4px;">${count} requests</div>
+                    </div>`;
                 }
             },
             xAxis: {
                 type: 'category',
                 data: latencyHist.bins,
-                axisLabel: { 
-                    color: '#94a3b8',
-                    interval: Math.floor(latencyHist.bins.length / 10) || 0,
-                    rotate: 0
+                axisLabel: {
+                    color: '#6b7280',
+                    fontSize: 10,
+                    interval: Math.floor(latencyHist.bins.length / 6) || 0
                 },
-                axisLine: { lineStyle: { color: '#334155' } },
+                axisLine: { lineStyle: { color: '#374151' } },
+                axisTick: { show: false },
                 name: 'Latency (ms)',
                 nameLocation: 'middle',
-                nameGap: 30,
-                nameTextStyle: { color: '#94a3b8' }
+                nameGap: 35,
+                nameTextStyle: { color: '#9ca3af', fontSize: 11 }
             },
             yAxis: {
                 type: 'value',
-                axisLabel: { color: '#94a3b8' },
-                splitLine: { lineStyle: { color: '#334155' } },
-                name: 'Count',
-                nameTextStyle: { color: '#94a3b8' }
+                axisLabel: { color: '#6b7280', fontSize: 10 },
+                splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                axisLine: { show: false },
+                axisTick: { show: false }
             },
             series: [{
                 data: latencyHist.counts,
                 type: 'bar',
                 itemStyle: {
                     color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                        { offset: 0, color: '#a78bfa' },
-                        { offset: 1, color: '#8b5cf6' }
-                    ])
+                        { offset: 0, color: '#c084fc' },
+                        { offset: 1, color: '#a855f7' }
+                    ]),
+                    borderRadius: [4, 4, 0, 0]
                 },
-                barWidth: '80%',
-                markLine: {
-                    data: [
-                        { xAxis: latencyHist.bins.findIndex(b => parseFloat(b) >= report.p50_latency_ms), name: 'P50', lineStyle: { color: '#10b981' } },
-                        { xAxis: latencyHist.bins.findIndex(b => parseFloat(b) >= report.p95_latency_ms), name: 'P95', lineStyle: { color: '#f59e0b' } },
-                        { xAxis: latencyHist.bins.findIndex(b => parseFloat(b) >= report.p99_latency_ms), name: 'P99', lineStyle: { color: '#ef4444' } }
-                    ].filter(d => d.xAxis >= 0),
-                    label: { formatter: '{b}' }
+                barWidth: '70%',
+                emphasis: {
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#d8b4fe' },
+                            { offset: 1, color: '#c084fc' }
+                        ])
+                    }
                 }
-            }]
+            }],
+            animationDuration: 1000,
+            animationEasing: 'cubicOut',
+            animationDelay: 200
         });
-        
+
         // Success/Failure Pie Chart
         const successChart = echarts.init(document.getElementById('success-chart'));
         successChart.setOption({
-            tooltip: { trigger: 'item' },
+            ...chartTheme,
+            tooltip: {
+                ...chartTheme.tooltip,
+                trigger: 'item',
+                formatter: function (params) {
+                    return `<div style="font-family: 'Plus Jakarta Sans', sans-serif;">
+                        <div style="font-weight: 600; margin-bottom: 4px;">${params.name}</div>
+                        <div style="color: ${params.name === 'Success' ? '#10b981' : '#f43f5e'}; font-weight: 600;">
+                            ${params.value} requests (${params.percent}%)
+                        </div>
+                    </div>`;
+                }
+            },
             legend: {
                 orient: 'horizontal',
-                bottom: 10,
-                textStyle: { color: '#94a3b8' }
+                bottom: 16,
+                textStyle: {
+                    color: '#9ca3af',
+                    fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    fontSize: 12
+                },
+                itemGap: 24
             },
             series: [{
                 type: 'pie',
-                radius: ['40%', '70%'],
+                radius: ['45%', '75%'],
+                center: ['50%', '45%'],
                 avoidLabelOverlap: false,
                 itemStyle: {
-                    borderRadius: 10,
-                    borderColor: '#1e293b',
-                    borderWidth: 2
+                    borderRadius: 8,
+                    borderColor: '#0a0f1a',
+                    borderWidth: 3
                 },
                 label: {
                     show: true,
-                    color: '#f1f5f9'
+                    position: 'center',
+                    formatter: function () {
+                        return `{value|${successRate}%}\n{label|Success Rate}`;
+                    },
+                    rich: {
+                        value: {
+                            fontSize: 28,
+                            fontWeight: 700,
+                            color: '#10b981',
+                            fontFamily: "'JetBrains Mono', monospace",
+                            lineHeight: 36
+                        },
+                        label: {
+                            fontSize: 11,
+                            color: '#6b7280',
+                            fontFamily: "'Plus Jakarta Sans', sans-serif"
+                        }
+                    }
+                },
+                emphasis: {
+                    scale: true,
+                    scaleSize: 8
                 },
                 data: [
-                    { value: report.success, name: 'Success', itemStyle: { color: '#22c55e' } },
-                    { value: report.failure, name: 'Failure', itemStyle: { color: '#ef4444' } }
+                    {
+                        value: report.success,
+                        name: 'Success',
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+                                { offset: 0, color: '#34d399' },
+                                { offset: 1, color: '#10b981' }
+                            ])
+                        }
+                    },
+                    {
+                        value: report.failure,
+                        name: 'Failure',
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 1, 1, [
+                                { offset: 0, color: '#fb7185' },
+                                { offset: 1, color: '#f43f5e' }
+                            ])
+                        }
+                    }
                 ]
-            }]
+            }],
+            animationDuration: 1200,
+            animationEasing: 'cubicOut',
+            animationDelay: 400
         });
-        
+
         // Resize charts on window resize
         window.addEventListener('resize', () => {
             ttftChart.resize();
@@ -529,4 +1087,5 @@
         });
     </script>
 </body>
+
 </html>

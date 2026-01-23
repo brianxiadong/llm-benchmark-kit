@@ -270,6 +270,27 @@ def parse_fulltest_result(result_dir: Path) -> Optional[FullTestResult]:
         return None
 
 
+# Premium color palette
+COLORS = {
+    'blue': '#6366f1',
+    'purple': '#8b5cf6',
+    'pink': '#ec4899',
+    'green': '#10b981',
+    'red': '#f43f5e',
+    'orange': '#f59e0b',
+    'cyan': '#06b6d4',
+    'indigo': '#4f46e5',
+}
+
+DARK_LAYOUT = dict(
+    template='plotly_dark',
+    paper_bgcolor='rgba(0,0,0,0)',
+    plot_bgcolor='rgba(0,0,0,0)',
+    font=dict(family='Plus Jakarta Sans, sans-serif', color='#f0f0f5'),
+    title_font=dict(size=18, color='#f0f0f5'),
+    legend=dict(bgcolor='rgba(0,0,0,0)'),
+)
+
 def create_ttft_chart(results: List[FullTestResult]) -> str:
     """Create TTFT comparison chart."""
     names = [r.name for r in results]
@@ -280,34 +301,34 @@ def create_ttft_chart(results: List[FullTestResult]) -> str:
         name='Avg TTFT',
         x=names,
         y=[r.avg_ttft_ms for r in results],
-        marker_color='#3498db'
+        marker_color=COLORS['blue']
     ))
     fig.add_trace(go.Bar(
         name='P50 TTFT',
         x=names,
         y=[r.p50_ttft_ms for r in results],
-        marker_color='#2ecc71'
+        marker_color=COLORS['green']
     ))
     fig.add_trace(go.Bar(
         name='P95 TTFT',
         x=names,
         y=[r.p95_ttft_ms for r in results],
-        marker_color='#f39c12'
+        marker_color=COLORS['orange']
     ))
     fig.add_trace(go.Bar(
         name='P99 TTFT',
         x=names,
         y=[r.p99_ttft_ms for r in results],
-        marker_color='#e74c3c'
+        marker_color=COLORS['red']
     ))
     
     fig.update_layout(
-        title='Phase 1: Time To First Token (TTFT) 对比',
+        title='Time To First Token (TTFT) 对比',
         xaxis_title='测试名称',
         yaxis_title='时间 (ms)',
         barmode='group',
-        template='plotly_white',
-        height=500
+        height=500,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -323,34 +344,34 @@ def create_latency_chart(results: List[FullTestResult]) -> str:
         name='Avg Latency',
         x=names,
         y=[r.avg_latency_ms for r in results],
-        marker_color='#3498db'
+        marker_color=COLORS['blue']
     ))
     fig.add_trace(go.Bar(
         name='P50 Latency',
         x=names,
         y=[r.p50_latency_ms for r in results],
-        marker_color='#2ecc71'
+        marker_color=COLORS['green']
     ))
     fig.add_trace(go.Bar(
         name='P95 Latency',
         x=names,
         y=[r.p95_latency_ms for r in results],
-        marker_color='#f39c12'
+        marker_color=COLORS['orange']
     ))
     fig.add_trace(go.Bar(
         name='P99 Latency',
         x=names,
         y=[r.p99_latency_ms for r in results],
-        marker_color='#e74c3c'
+        marker_color=COLORS['red']
     ))
     
     fig.update_layout(
-        title='Phase 1: 总延迟 (Latency) 对比',
+        title='总延迟 (Latency) 对比',
         xaxis_title='测试名称',
         yaxis_title='时间 (ms)',
         barmode='group',
-        template='plotly_white',
-        height=500
+        height=500,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -369,7 +390,7 @@ def create_throughput_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.token_throughput for r in results],
-            marker_color='#9b59b6',
+            marker_color=COLORS['purple'],
             name='Token Throughput'
         ),
         row=1, col=1
@@ -379,17 +400,17 @@ def create_throughput_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.rps for r in results],
-            marker_color='#1abc9c',
+            marker_color=COLORS['cyan'],
             name='RPS'
         ),
         row=1, col=2
     )
     
     fig.update_layout(
-        title='Phase 1: 吞吐量对比',
-        template='plotly_white',
+        title='吞吐量对比',
         height=400,
-        showlegend=False
+        showlegend=False,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -433,11 +454,14 @@ def create_radar_chart(results: List[FullTestResult]) -> str:
         polar=dict(
             radialaxis=dict(
                 visible=True,
-                range=[0, 100]
-            )
+                range=[0, 100],
+                gridcolor='rgba(255,255,255,0.1)'
+            ),
+            bgcolor='rgba(0,0,0,0)',
+            angularaxis=dict(gridcolor='rgba(255,255,255,0.1)')
         ),
-        template='plotly_white',
-        height=500
+        height=500,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -458,8 +482,8 @@ def create_ttft_distribution_chart(results: List[FullTestResult]) -> str:
     fig.update_layout(
         title='TTFT 分布对比 (箱线图)',
         yaxis_title='TTFT (ms)',
-        template='plotly_white',
-        height=400
+        height=400,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -480,8 +504,8 @@ def create_latency_distribution_chart(results: List[FullTestResult]) -> str:
     fig.update_layout(
         title='Latency 分布对比 (箱线图)',
         yaxis_title='Latency (ms)',
-        template='plotly_white',
-        height=400
+        height=400,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -500,7 +524,7 @@ def create_summary_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.summary_tokens_per_second for r in results],
-            marker_color='#e74c3c',
+            marker_color=COLORS['red'],
             name='Token/s'
         ),
         row=1, col=1
@@ -510,7 +534,7 @@ def create_summary_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.summary_total_tokens for r in results],
-            marker_color='#3498db',
+            marker_color=COLORS['blue'],
             name='Total Tokens'
         ),
         row=1, col=2
@@ -520,17 +544,17 @@ def create_summary_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.summary_processing_time_sec for r in results],
-            marker_color='#2ecc71',
+            marker_color=COLORS['green'],
             name='Processing Time'
         ),
         row=1, col=3
     )
     
     fig.update_layout(
-        title='Phase 4: 会议纪要性能对比',
-        template='plotly_white',
+        title='会议纪要性能对比',
         height=400,
-        showlegend=False
+        showlegend=False,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -549,7 +573,7 @@ def create_long_context_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.lc_max_supported for r in results],
-            marker_color='#9b59b6',
+            marker_color=COLORS['purple'],
             name='Max Context'
         ),
         row=1, col=1
@@ -559,7 +583,7 @@ def create_long_context_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.lc_avg_ttft_ms for r in results],
-            marker_color='#3498db',
+            marker_color=COLORS['blue'],
             name='Avg TTFT'
         ),
         row=1, col=2
@@ -569,17 +593,17 @@ def create_long_context_chart(results: List[FullTestResult]) -> str:
         go.Bar(
             x=names,
             y=[r.lc_avg_throughput for r in results],
-            marker_color='#2ecc71',
+            marker_color=COLORS['green'],
             name='Avg Throughput'
         ),
         row=1, col=3
     )
     
     fig.update_layout(
-        title='Phase 3: 长上下文测试对比',
-        template='plotly_white',
+        title='长上下文测试对比',
         height=400,
-        showlegend=False
+        showlegend=False,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
@@ -600,24 +624,28 @@ def create_long_context_detail_chart(results: List[FullTestResult]) -> str:
                     y=y_ttft,
                     mode='lines+markers',
                     name=r.name,
-                    marker=dict(size=10)
+                    marker=dict(size=10),
+                    line=dict(width=3)
                 ))
     
     fig.update_layout(
-        title='长上下文 TTFT 曲线对比 (上下文长度 vs TTFT)',
+        title='长上下文 TTFT 曲线对比',
         xaxis_title='上下文长度 (K字符)',
         yaxis_title='TTFT (ms)',
-        template='plotly_white',
-        height=450
+        height=450,
+        **DARK_LAYOUT
     )
     
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
 
 def generate_html_report(results: List[FullTestResult], output_path: str) -> None:
-    """Generate the complete HTML comparison report."""
+    """Generate the complete HTML comparison report with premium styling."""
     
-    # Generate all charts
+    # Update chart templates to use dark theme
+    import plotly.io as pio
+    pio.templates.default = "plotly_dark"
+        # Generate all charts
     ttft_chart = create_ttft_chart(results)
     latency_chart = create_latency_chart(results)
     throughput_chart = create_throughput_chart(results)
@@ -696,130 +724,247 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
     <title>LLM FullTest 对比报告</title>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        
+        :root {{
+            --color-bg-primary: #0a0a0f;
+            --color-bg-secondary: #12121a;
+            --color-bg-card: rgba(255, 255, 255, 0.03);
+            --color-border: rgba(255, 255, 255, 0.08);
+            --color-text-primary: #f0f0f5;
+            --color-text-secondary: #8b8b9e;
+            --color-accent-blue: #6366f1;
+            --color-accent-purple: #8b5cf6;
+            --color-accent-pink: #ec4899;
+            --color-accent-green: #10b981;
+            --color-accent-red: #f43f5e;
+            --color-accent-orange: #f59e0b;
+            --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
         }}
+        
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        html {{ scroll-behavior: smooth; }}
+        
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            font-family: var(--font-sans);
+            background: var(--color-bg-primary);
+            color: var(--color-text-primary);
             min-height: 100vh;
-            color: #e0e0e0;
-            padding: 20px;
+            line-height: 1.6;
         }}
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
+        
+        body::before {{
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 100% 0%, rgba(139, 92, 246, 0.1), transparent),
+                radial-gradient(ellipse 50% 30% at 0% 100%, rgba(236, 72, 153, 0.08), transparent);
+            pointer-events: none;
+            z-index: -1;
         }}
-        header {{
+        
+        .container {{ max-width: 1400px; margin: 0 auto; padding: 40px 24px; }}
+        
+        .header {{
             text-align: center;
-            padding: 40px 20px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 16px;
-            margin-bottom: 30px;
-            backdrop-filter: blur(10px);
+            padding: 60px 40px;
+            margin-bottom: 48px;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+            border: 1px solid var(--color-border);
+            border-radius: 24px;
+            backdrop-filter: blur(20px);
+            position: relative;
+            overflow: hidden;
         }}
+        
+        .header::before {{
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.5), rgba(139, 92, 246, 0.5), transparent);
+        }}
+        
+        .logo-mark {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 72px;
+            height: 72px;
+            background: linear-gradient(135deg, var(--color-accent-blue), var(--color-accent-purple));
+            border-radius: 20px;
+            margin-bottom: 24px;
+            box-shadow: 0 20px 40px rgba(99, 102, 241, 0.3);
+        }}
+        
+        .logo-mark svg {{ width: 40px; height: 40px; fill: white; }}
+        
         h1 {{
-            font-size: 2.5em;
-            background: linear-gradient(90deg, #00d2ff, #3a7bd5);
+            font-size: 2.75rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 10px;
+            background-clip: text;
+            margin-bottom: 12px;
         }}
+        
         .subtitle {{
-            color: #888;
-            font-size: 1.1em;
+            color: var(--color-text-secondary);
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
         }}
+        
         .section {{
-            background: rgba(255,255,255,0.05);
-            border-radius: 16px;
-            padding: 25px;
-            margin-bottom: 25px;
+            background: var(--color-bg-card);
+            border: 1px solid var(--color-border);
+            border-radius: 20px;
+            padding: 32px;
+            margin-bottom: 32px;
             backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            animation: fadeIn 0.5s ease forwards;
         }}
+        
+        .section:hover {{
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 8px 32px rgba(99, 102, 241, 0.1);
+        }}
+        
         .section h2 {{
-            color: #3a7bd5;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }}
-        th, td {{
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }}
-        th {{
-            background: rgba(58, 123, 213, 0.3);
-            color: #fff;
+            font-size: 1.5rem;
             font-weight: 600;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--color-text-primary);
         }}
-        tr:hover {{
-            background: rgba(255,255,255,0.05);
+        
+        .phase-badge {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
         }}
-        .chart-container {{
-            background: #fff;
+        
+        .phase-1 {{ background: linear-gradient(135deg, var(--color-accent-blue), var(--color-accent-purple)); color: white; }}
+        .phase-2 {{ background: linear-gradient(135deg, var(--color-accent-purple), var(--color-accent-pink)); color: white; }}
+        .phase-3 {{ background: linear-gradient(135deg, var(--color-accent-pink), var(--color-accent-orange)); color: white; }}
+        .phase-4 {{ background: linear-gradient(135deg, var(--color-accent-green), #0ea5e9); color: white; }}
+        
+        .table-wrapper {{
+            overflow-x: auto;
             border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 20px;
+            border: 1px solid var(--color-border);
+            background: rgba(0, 0, 0, 0.2);
         }}
+        
+        table {{ width: 100%; border-collapse: collapse; font-size: 0.95rem; }}
+        
+        th {{
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--color-text-primary);
+            font-weight: 600;
+            text-align: left;
+            padding: 16px 20px;
+            white-space: nowrap;
+            border-bottom: 1px solid var(--color-border);
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 0.05em;
+        }}
+        
+        td {{
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
+        }}
+        
+        tr:last-child td {{ border-bottom: none; }}
+        tr:hover td {{ background: rgba(255, 255, 255, 0.02); }}
+        
+        .success {{ color: var(--color-accent-green); font-weight: 600; }}
+        .error {{ color: var(--color-accent-red); font-weight: 600; }}
+        
+        code {{
+            font-family: var(--font-mono);
+            background: rgba(0, 0, 0, 0.3);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: var(--color-accent-purple);
+        }}
+        
+        .chart-container {{
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--color-border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 20px;
+        }}
+        
         .chart-row {{
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 24px;
         }}
-        @media (max-width: 1000px) {{
-            .chart-row {{
-                grid-template-columns: 1fr;
-            }}
-        }}
+        
         .footer {{
             text-align: center;
-            padding: 20px;
-            color: #666;
-            font-size: 0.9em;
+            padding: 40px 20px;
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
         }}
-        .success {{
-            color: #2ecc71;
-            font-weight: 600;
+        
+        .footer a {{ color: var(--color-accent-blue); text-decoration: none; }}
+        .footer a:hover {{ color: var(--color-accent-purple); }}
+        
+        @keyframes fadeIn {{
+            from {{ opacity: 0; transform: translateY(20px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
         }}
-        .error {{
-            color: #e74c3c;
-            font-weight: 600;
+        
+        @media (max-width: 768px) {{
+            .container {{ padding: 20px 16px; }}
+            .header {{ padding: 40px 20px; }}
+            h1 {{ font-size: 2rem; }}
+            .section {{ padding: 20px; }}
+            .chart-row {{ grid-template-columns: 1fr; }}
+            th, td {{ padding: 10px 12px; font-size: 0.85rem; }}
         }}
-        code {{
-            background: rgba(0,0,0,0.3);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: monospace;
-        }}
-        .phase-badge {{
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.85em;
-            margin-right: 10px;
-        }}
-        .phase-1 {{ background: #3498db; }}
-        .phase-2 {{ background: #9b59b6; }}
-        .phase-3 {{ background: #e74c3c; }}
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🚀 LLM FullTest 对比报告</h1>
-            <p class="subtitle">生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 共 {len(results)} 个测试</p>
+        <header class="header">
+            <div class="logo-mark">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M13 3L4 14h7l-2 7 9-11h-7l2-7z" fill="currentColor"/>
+                </svg>
+            </div>
+            <h1>LLM FullTest 对比报告</h1>
+            <p class="subtitle">
+                <span>📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</span>
+                <span>📊 共 {len(results)} 个测试</span>
+            </p>
         </header>
         
         <div class="section">
             <h2><span class="phase-badge phase-1">Phase 1</span> 性能测试汇总</h2>
-            <div style="overflow-x: auto;">
+            <div class="table-wrapper">
                 <table>
                     <thead>
                         <tr>
@@ -883,7 +1028,7 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
         
         <div class="section">
             <h2><span class="phase-badge phase-2">Phase 2</span> Function Call 测试对比</h2>
-            <div style="overflow-x: auto;">
+            <div class="table-wrapper">
                 <table>
                     <thead>
                         <tr>
@@ -903,7 +1048,7 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
         
         <div class="section">
             <h2><span class="phase-badge phase-3">Phase 3</span> 长上下文测试对比</h2>
-            <div style="overflow-x: auto;">
+            <div class="table-wrapper">
                 <table>
                     <thead>
                         <tr>
@@ -919,17 +1064,17 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
                     </tbody>
                 </table>
             </div>
-            <div class="chart-container" style="margin-top: 20px;">
+            <div class="chart-container">
                 {long_context_chart}
             </div>
-            <div class="chart-container" style="margin-top: 20px;">
+            <div class="chart-container">
                 {long_context_detail_chart}
             </div>
         </div>
         
         <div class="section">
-            <h2><span class="phase-badge phase-3">Phase 4</span> 会议纪要性能对比</h2>
-            <div style="overflow-x: auto;">
+            <h2><span class="phase-badge phase-4">Phase 4</span> 会议纪要性能对比</h2>
+            <div class="table-wrapper">
                 <table>
                     <thead>
                         <tr>
@@ -947,16 +1092,16 @@ def generate_html_report(results: List[FullTestResult], output_path: str) -> Non
                     </tbody>
                 </table>
             </div>
-            <div class="chart-container" style="margin-top: 20px;">
+            <div class="chart-container">
                 {summary_chart}
             </div>
         </div>
         
-        <div class="footer">
+        <footer class="footer">
             <p>Generated by LLM Benchmark Kit | 
-               <a href="https://github.com/brianxiadong/llm-benchmark-kit" style="color: #3a7bd5;">GitHub</a>
+               <a href="https://github.com/brianxiadong/llm-benchmark-kit">GitHub</a>
             </p>
-        </div>
+        </footer>
     </div>
 </body>
 </html>
