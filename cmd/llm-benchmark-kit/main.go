@@ -17,6 +17,7 @@ import (
 	_ "github.com/brianxiadong/llm-benchmark-kit/pkg/provider/openai" // Register OpenAI provider
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/runner"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/summarizer"
+	"github.com/brianxiadong/llm-benchmark-kit/pkg/summarybench"
 )
 
 var (
@@ -67,6 +68,11 @@ func main() {
 	// Full Test Mode
 	fullTest := flag.Bool("full-test", false, "Run complete test suite (benchmark + summary)")
 
+	// Summary Benchmark Mode
+	summaryBench := flag.Bool("summary-bench", false, "Run concurrent meeting summary benchmark")
+	summaryBenchConcurrency := flag.Int("sb-concurrency", 5, "Concurrency for summary benchmark")
+	summaryBenchRequests := flag.Int("sb-requests", 20, "Total requests for summary benchmark")
+
 	// Version flag
 	showVersion := flag.Bool("version", false, "Show version information")
 
@@ -74,9 +80,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "LLM Benchmark Kit - High-Performance LLM Benchmarking Tool\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: %s [options]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Modes:\n")
-		fmt.Fprintf(os.Stderr, "  Benchmark Mode: Run performance tests against LLM API\n")
-		fmt.Fprintf(os.Stderr, "  Summary Mode:   Summarize meeting transcripts (use -transcript-file)\n")
-		fmt.Fprintf(os.Stderr, "  Full Test Mode: Run complete test suite (use -full-test)\n\n")
+		fmt.Fprintf(os.Stderr, "  Benchmark Mode:      Run performance tests against LLM API\n")
+		fmt.Fprintf(os.Stderr, "  Summary Mode:        Summarize meeting transcripts (use -transcript-file)\n")
+		fmt.Fprintf(os.Stderr, "  Full Test Mode:      Run complete test suite (use -full-test)\n")
+		fmt.Fprintf(os.Stderr, "  Summary Bench Mode:  Concurrent meeting summary benchmark (use -summary-bench)\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
@@ -86,6 +93,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  %s -url http://localhost:8000/v1/chat/completions -model qwen -transcript-file meeting.txt\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  # Full test mode\n")
 		fmt.Fprintf(os.Stderr, "  %s -full-test -url http://localhost:8000/v1/chat/completions -model qwen\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Summary benchmark mode (concurrent meeting summary stress test)\n")
+		fmt.Fprintf(os.Stderr, "  %s -summary-bench -sb-concurrency 10 -sb-requests 50 -url http://localhost:8000/v1/chat/completions -model qwen\n\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -106,6 +115,12 @@ func main() {
 	// Check if running in full-test mode
 	if *fullTest {
 		runFullTest(cfg)
+		return
+	}
+
+	// Check if running in summary benchmark mode
+	if *summaryBench {
+		runSummaryBench(cfg, *transcriptFile, *chunkSize, *summaryBenchConcurrency, *summaryBenchRequests)
 		return
 	}
 
@@ -280,4 +295,38 @@ func runFullTest(cfg *config.GlobalConfig) {
 	fmt.Printf("📊 Total Duration: %.2f seconds\n", report.TotalDuration.Seconds())
 	fmt.Printf("📁 Results saved to: %s\n", outputDir)
 	fmt.Printf("📄 Full report: %s/full_test_report.md\n", outputDir)
+}
+
+func runSummaryBench(cfg *config.GlobalConfig, transcriptFile string, chunkSize, concurrency, requests int) {
+	// Auto-generate output directory
+	modelName := cfg.ModelName
+	modelName = strings.ReplaceAll(modelName, "/", "_")
+	modelName = strings.ReplaceAll(modelName, ":", "_")
+	modelName = strings.ReplaceAll(modelName, " ", "_")
+	timestamp := time.Now().Format("20060102_150405")
+	outputDir := filepath.Join("output", fmt.Sprintf("summarybench_%s_%s", modelName, timestamp))
+
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║         LLM Benchmark Kit - Summary Benchmark Mode             ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("📋 Model:       %s\n", cfg.ModelName)
+	fmt.Printf("🔗 URL:         %s\n", cfg.URL)
+	fmt.Printf("👥 Concurrency: %d\n", concurrency)
+	fmt.Printf("📝 Requests:    %d\n", requests)
+	fmt.Printf("📏 Chunk Size:  %d chars\n", chunkSize)
+	fmt.Printf("📁 Output:      %s\n", outputDir)
+
+	bench := summarybench.NewBenchmark(cfg, concurrency, requests, chunkSize)
+	_, err := bench.Run(transcriptFile, outputDir)
+	if err != nil {
+		log.Fatalf("Summary benchmark failed: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║              Summary Benchmark Complete!                        ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+	fmt.Printf("📁 Results saved to: %s\n", outputDir)
 }

@@ -6,7 +6,9 @@
 <img width="1490" height="864" alt="image" src="https://github.com/user-attachments/assets/6f7c599b-23f6-44c3-8082-e1ce0817ab76" />
 <img width="1068" height="631" alt="image" src="https://github.com/user-attachments/assets/54058f0f-daf2-4a8d-9768-7667214cf6c1" />
 
-- **一键完整测试**：`-full-test` 模式自动运行性能测试 + 会议纪要生成测试
+- **一键完整测试**：`-full-test` 模式自动运行性能测试 + Function Call 测试 + 长上下文测试 + 会议纪要生成测试
+- **会议纪要并发压测**：`-summary-bench` 模式支持自定义并发数的会议纪要压力测试
+- **多模型对比报告**：`./compare.sh` 一键生成多模型对比分析 HTML 报告
 - **单文件交付**：CGO=0 静态二进制，客户环境直接运行
 - **精准流式指标**：支持 SSE 流式处理，可靠计算 TTFT/Latency
 - **多架构支持**：amd64/arm64 原生支持，Docker multi-arch
@@ -44,10 +46,32 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
 
 输出包含：
 - 性能测试报告（TTFT/Latency/RPS 等指标）
+- Function Call 测试（函数调用能力验证）
+- 长上下文测试（1K~32K 字符上下文性能）
 - 会议纪要生成测试（使用内置测试文本）
-- 汇总报告 `full_test_report.md`
+- 汇总报告 `full_test_report.md` 和 `full_test_report.html`
 
-#### 2. Benchmark 模式
+#### 2. Summary Benchmark 模式（会议纪要并发压测）
+
+对会议纪要生成进行并发压力测试，测试大模型在高并发场景下的吞吐能力：
+
+```bash
+./bin/llm-benchmark-kit -summary-bench \
+  -url http://your-llm-api/v1/chat/completions \
+  -model your-model-name \
+  -token $API_KEY \
+  -sb-concurrency 10 \
+  -sb-requests 50 \
+  -chunk-size 8000
+```
+
+输出包含：
+- 每请求 tokens/s 吞吐量统计（Avg/P50/P95/P99）
+- 延迟分布统计
+- 成功率、RPS
+- 详细报告 `summary_bench_report.md` 和 `summary_bench_report.json`
+
+#### 3. Benchmark 模式
 
 单独运行性能基准测试：
 
@@ -72,7 +96,7 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
   -out ./benchmark-results
 ```
 
-#### 3. Summary 模式
+#### 4. Summary 模式
 
 会议纪要生成测试：
 
@@ -84,6 +108,31 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
   -chunk-size 8000 \
   -meeting-time "2026-01-22 10:00"
 ```
+
+#### 5. 多模型对比报告
+
+运行多次 Full Test 后，一键生成多模型对比分析报告：
+
+```bash
+# 先运行多个模型的 Full Test
+./bin/llm-benchmark-kit -full-test -url http://api1/v1 -model model-a -token $KEY1
+./bin/llm-benchmark-kit -full-test -url http://api2/v1 -model model-b -token $KEY2
+
+# 生成对比报告
+./compare.sh
+
+# 或指定过滤模式
+./compare.sh deepseek    # 只对比包含 'deepseek' 的结果
+./compare.sh --help      # 查看帮助
+```
+
+生成的对比报告包含：
+- TTFT/Latency/Throughput 对比柱状图
+- 综合能力雷达图
+- 长上下文 TTFT 曲线对比
+- 延迟分布箱线图
+- Function Call 支持对比
+- 会议纪要性能对比
 
 ## 命令行参数
 
@@ -104,9 +153,18 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
 
 | 参数 | 说明 |
 |------|------|
-| `-full-test` | 运行完整测试套件（性能测试 + 会议纪要测试） |
+| `-full-test` | 运行完整测试套件（性能 + Function Call + 长上下文 + 会议纪要） |
+| `-summary-bench` | 会议纪要并发压测模式 |
 | `-transcript-file` | 指定会议记录文件，启用 Summary 模式 |
 | (默认) | Benchmark 模式 |
+
+### Summary Benchmark 模式参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `-sb-concurrency` | 5 | 并发 worker 数 |
+| `-sb-requests` | 20 | 总请求数 |
+| `-chunk-size` | 8000 | 会议纪要分块大小（字符） |
 
 ### Benchmark 模式参数
 
@@ -136,16 +194,32 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
 
 ```
 output/fulltest_{model}_{timestamp}/
-├── full_test_report.md       # 汇总报告
-├── benchmark/                # 性能测试结果
+├── full_test_report.md       # Markdown 汇总报告
+├── full_test_report.html     # HTML 可视化报告（暗色主题，内嵌 ECharts）
+├── request_response.log      # 完整请求/响应日志
+├── benchmark/                # Phase 1: 性能测试结果
 │   ├── results.jsonl         # 每个请求的详细结果
 │   ├── summary.json          # 聚合统计数据
 │   └── report.html           # 可视化 HTML 报告
-└── summary/                  # 会议纪要结果
+└── summary/                  # Phase 4: 会议纪要结果
     ├── meeting_summary.md    # 最终会议纪要
     ├── performance_report.md # 性能指标报告
     ├── performance_metrics.json
     └── intermediate/         # 分片处理中间结果
+```
+
+### Summary Benchmark 模式输出
+
+```
+output/summarybench_{model}_{timestamp}/
+├── summary_bench_report.json # JSON 详细报告
+└── summary_bench_report.md   # Markdown 报告
+```
+
+### 对比报告输出
+
+```
+local/comparison_{timestamp}.html  # 多模型对比 HTML 报告
 ```
 
 ### Benchmark 模式输出
@@ -221,17 +295,26 @@ make docker
 ├── cmd/llm-benchmark-kit/   # CLI 入口
 ├── pkg/
 │   ├── config/              # 配置定义
+│   ├── embedded/            # 内嵌资源（测试文本）
 │   ├── fulltest/            # Full Test 模式实现
+│   │   ├── templates/       # HTML 报告模板
+│   │   └── assets/          # 内嵌 JS/字体资源
 │   ├── provider/            # Provider 接口和实现
 │   │   └── openai/          # OpenAI Provider
 │   ├── result/              # 结果类型
 │   ├── runner/              # 基准测试运行器
+│   │   └── templates/       # Benchmark HTML 模板
 │   ├── sse/                 # SSE 解析器
 │   ├── stats/               # 统计工具
 │   ├── summarizer/          # 会议纪要生成器
+│   ├── summarybench/        # 会议纪要并发压测
 │   └── workload/            # 工作负载定义
-├── example/                 # 示例数据
-└── doc/                     # 文档
+├── tools/
+│   └── compare/             # 多模型对比报告工具
+│       ├── compare_report.py
+│       └── requirements.txt
+├── compare.sh               # 一键对比报告脚本
+└── local/                   # 本地输出（已 gitignore）
 ```
 
 ## License
