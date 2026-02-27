@@ -44,7 +44,7 @@ list_results() {
     info "可用的测试结果:"
     echo ""
     local count=0
-    for dir in "${OUTPUT_DIR}"/fulltest_*; do
+    for dir in "${OUTPUT_DIR}"/*; do
         if [ -d "$dir" ]; then
             local name=$(basename "$dir")
             local summary="${dir}/benchmark/summary.json"
@@ -85,8 +85,26 @@ main() {
     fi
     
     local result_count=$(find "${OUTPUT_DIR}" -maxdepth 1 -type d -name "${PATTERN}*" 2>/dev/null | wc -l | tr -d ' ')
+    
+    # 如果默认模式没有找到结果，尝试搜索所有目录
+    if [ "$result_count" -eq 0 ] && [ "${PATTERN}" == "fulltest_" ]; then
+        warn "未找到符合 'fulltest_*' 的结果，尝试搜索所有测试结果..."
+        # 统计包含 benchmark/summary.json 的目录数量
+        result_count=0
+        for dir in "${OUTPUT_DIR}"/*; do
+            if [ -d "$dir" ] && [ -f "${dir}/benchmark/summary.json" ]; then
+                ((result_count++))
+            fi
+        done
+        
+        if [ "$result_count" -gt 0 ]; then
+            PATTERN=""
+            info "找到 ${result_count} 个可用测试结果 (忽略命名前缀)"
+        fi
+    fi
+
     if [ "$result_count" -eq 0 ]; then
-        error "未找到匹配的测试结果 (pattern: ${PATTERN}*)"
+        error "未找到匹配的测试结果"
         list_results
         exit 1
     fi

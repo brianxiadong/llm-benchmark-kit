@@ -42,8 +42,18 @@ build-darwin-arm64:
 	@echo "Building $(BINARY_NAME) for darwin/arm64..."
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 ./cmd/$(BINARY_NAME)
 
+## Build for Windows amd64
+build-windows-amd64:
+	@echo "Building $(BINARY_NAME) for windows/amd64..."
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe ./cmd/$(BINARY_NAME)
+
+## Build for Windows arm64
+build-windows-arm64:
+	@echo "Building $(BINARY_NAME) for windows/arm64..."
+	CGO_ENABLED=$(CGO_ENABLED) GOOS=windows GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64.exe ./cmd/$(BINARY_NAME)
+
 ## Build for all platforms
-build-all: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64
+build-all: build-linux-amd64 build-linux-arm64 build-darwin-amd64 build-darwin-arm64 build-windows-amd64 build-windows-arm64
 	@echo "All builds complete!"
 	@ls -la bin/
 
@@ -87,13 +97,15 @@ help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  build              Build for current platform"
-	@echo "  build-linux-amd64  Build for Linux amd64"
-	@echo "  build-linux-arm64  Build for Linux arm64"
-	@echo "  build-darwin-amd64 Build for macOS amd64"
-	@echo "  build-darwin-arm64 Build for macOS arm64"
-	@echo "  build-all          Build for all platforms"
-	@echo "  test               Run tests"
+	@echo "  build                Build for current platform"
+	@echo "  build-linux-amd64    Build for Linux amd64"
+	@echo "  build-linux-arm64    Build for Linux arm64"
+	@echo "  build-darwin-amd64   Build for macOS amd64"
+	@echo "  build-darwin-arm64   Build for macOS arm64"
+	@echo "  build-windows-amd64  Build for Windows amd64"
+	@echo "  build-windows-arm64  Build for Windows arm64"
+	@echo "  build-all            Build for all platforms"
+	@echo "  test                 Run tests"
 	@echo "  test-coverage      Run tests with coverage"
 	@echo "  lint               Run linter"
 	@echo "  docker             Build Docker image"
