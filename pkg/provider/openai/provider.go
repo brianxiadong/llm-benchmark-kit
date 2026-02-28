@@ -57,8 +57,10 @@ type StreamChoice struct {
 
 // DeltaContent represents the delta content in streaming.
 type DeltaContent struct {
-	Role    string `json:"role,omitempty"`
-	Content string `json:"content,omitempty"`
+	Role             string `json:"role,omitempty"`
+	Content          string `json:"content,omitempty"`
+	Reasoning        string `json:"reasoning,omitempty"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 }
 
 // StreamResponse represents a single streaming response chunk.
@@ -256,7 +258,8 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 			}
 		}
 
-		// Check for content
+		// Check for content - only use the content field
+		// reasoning/reasoning_content is the model's internal thinking, NOT the answer
 		for _, choice := range resp.Choices {
 			if choice.Delta.Content != "" {
 				// Accumulate for verbose logging

@@ -195,9 +195,11 @@ func (r *Runner) Run() (*FullTestReport, error) {
 	}
 
 	// Set appropriate max_tokens for full-test (balanced for complete answers)
+	// For thinking models that use reasoning tokens, 512 may be too small,
+	// but performance tests focus on throughput measurement, so this is acceptable.
 	originalMaxTokens := r.cfg.MaxTokens
-	if r.cfg.MaxTokens > 512 || r.cfg.MaxTokens == 0 {
-		r.cfg.MaxTokens = 512
+	if r.cfg.MaxTokens > 1024 || r.cfg.MaxTokens == 0 {
+		r.cfg.MaxTokens = 1024
 		fmt.Printf("📝 Note: Set max_tokens to %d for full-test\n\n", r.cfg.MaxTokens)
 	}
 

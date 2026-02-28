@@ -83,8 +83,10 @@ type ChatResponse struct {
 	Choices []struct {
 		Index   int `json:"index"`
 		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role             string  `json:"role"`
+			Content          *string `json:"content"`
+			Reasoning        *string `json:"reasoning"`
+			ReasoningContent *string `json:"reasoning_content"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -231,7 +233,7 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string, chunkIndex int) (string,
 	reqBody := ChatRequest{
 		Model:     s.cfg.ModelName,
 		Messages:  messages,
-		MaxTokens: 4096, // Allow longer responses for summaries
+		MaxTokens: 16384, // Allow longer responses for thinking models that need reasoning + output
 		Stream:    false,
 	}
 
@@ -299,7 +301,26 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string, chunkIndex int) (string,
 	metrics.CompletionTokens = chatResp.Usage.CompletionTokens
 	metrics.TotalTokens = chatResp.Usage.TotalTokens
 
-	content := chatResp.Choices[0].Message.Content
+	// Extract content - only use the content field, NEVER use reasoning/reasoning_content
+	// reasoning_content is the model's internal thinking process, NOT the final answer
+	var content string
+	msg := chatResp.Choices[0].Message
+	if msg.Content != nil && *msg.Content != "" {
+		content = *msg.Content
+	}
+
+	// Detect thinking model token exhaustion
+	if content == "" {
+		hasReasoning := (msg.ReasoningContent != nil && *msg.ReasoningContent != "") ||
+			(msg.Reasoning != nil && *msg.Reasoning != "")
+		if hasReasoning {
+			fmt.Printf("  ⚠️  思考模型在推理阶段耗尽了 max_tokens（completion_tokens=%d）\n", chatResp.Usage.CompletionTokens)
+			fmt.Printf("  模型返回了 reasoning 但 content 为空，请增大 max_tokens 参数\n")
+		} else {
+			fmt.Printf("  ⚠️  Warning: LLM returned empty content for chunk %d (completion_tokens=%d)\n",
+				chunkIndex, chatResp.Usage.CompletionTokens)
+		}
+	}
 
 	// Verbose logging: response
 	if s.cfg.Verbose {
@@ -310,6 +331,9 @@ func (s *Summarizer) chat(sysPrompt, userPrompt string, chunkIndex int) (string,
 		fmt.Printf("Tokens: prompt=%d, completion=%d, total=%d\n",
 			chatResp.Usage.PromptTokens, chatResp.Usage.CompletionTokens, chatResp.Usage.TotalTokens)
 		fmt.Printf("Processing time: %.2fs\n", metrics.ProcessingTime.Seconds())
+		fmt.Printf("Content is nil: %v\n", msg.Content == nil)
+		fmt.Printf("Reasoning is nil: %v\n", msg.Reasoning == nil)
+		fmt.Printf("ReasoningContent is nil: %v\n", msg.ReasoningContent == nil)
 		fmt.Println("\n[Content]:")
 		fmt.Println(content)
 		fmt.Println(strings.Repeat("=", 80))

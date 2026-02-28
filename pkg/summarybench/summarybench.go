@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -96,8 +97,10 @@ type ChatResponse struct {
 	Choices []struct {
 		Index   int `json:"index"`
 		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role             string  `json:"role"`
+			Content          *string `json:"content"`
+			Reasoning        *string `json:"reasoning"`
+			ReasoningContent *string `json:"reasoning_content"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -251,7 +254,7 @@ func (b *Benchmark) executeRequest(client *http.Client, reqID int) RequestResult
 	reqBody := ChatRequest{
 		Model:     b.cfg.ModelName,
 		Messages:  messages,
-		MaxTokens: 2048,
+		MaxTokens: 8192, // Allow enough tokens for thinking models (reasoning + output)
 		Stream:    false,
 	}
 
@@ -315,7 +318,28 @@ func (b *Benchmark) executeRequest(client *http.Client, reqID int) RequestResult
 		return result
 	}
 
-	result.Success = true
+	// Extract content - only use the content field, NEVER use reasoning/reasoning_content
+	// reasoning_content is the model's internal thinking process, NOT the final answer
+	msg := chatResp.Choices[0].Message
+	var responseContent string
+	if msg.Content != nil && *msg.Content != "" {
+		responseContent = *msg.Content
+	}
+
+	// Clean response: remove <think> tags and code block markers
+	responseContent = cleanThinkTags(responseContent)
+
+	if responseContent == "" {
+		hasReasoning := (msg.ReasoningContent != nil && *msg.ReasoningContent != "") ||
+			(msg.Reasoning != nil && *msg.Reasoning != "")
+		if hasReasoning {
+			result.Error = fmt.Sprintf("thinking model exhausted max_tokens during reasoning (completion_tokens=%d), increase max_tokens", chatResp.Usage.CompletionTokens)
+		} else {
+			result.Error = fmt.Sprintf("empty content (completion_tokens=%d)", chatResp.Usage.CompletionTokens)
+		}
+	}
+
+	result.Success = responseContent != ""
 	result.PromptTokens = chatResp.Usage.PromptTokens
 	result.CompletionTokens = chatResp.Usage.CompletionTokens
 	result.TotalTokens = chatResp.Usage.TotalTokens
@@ -332,17 +356,17 @@ func (b *Benchmark) executeRequest(client *http.Client, reqID int) RequestResult
 func (b *Benchmark) getChunk(reqID int) string {
 	// Add unique prefix to prevent cache hits
 	uniquePrefix := fmt.Sprintf("[请求ID: %d, 时间戳: %d]\n\n", reqID, time.Now().UnixNano())
-	
+
 	if len(b.transcript) <= b.chunkSize {
 		return uniquePrefix + b.transcript
 	}
-	
+
 	// Use random offset to get different parts of the transcript
 	maxOffset := len(b.transcript) - b.chunkSize
 	if maxOffset <= 0 {
 		return uniquePrefix + b.transcript
 	}
-	
+
 	offset := rand.Intn(maxOffset)
 	return uniquePrefix + b.transcript[offset:offset+b.chunkSize]
 }
@@ -594,4 +618,23 @@ func (b *Benchmark) printSummary(report *BenchmarkReport) {
 	fmt.Printf("   │  总输出 Tokens: %-10d      整体吞吐: %-10.1f tokens/s           │\n",
 		s.TotalCompletionTokens, s.OverallTokensPerSecond)
 	fmt.Printf("   └─────────────────────────────────────────────────────────────────────────┘\n")
+}
+
+// cleanThinkTags removes <think>...</think> blocks and code block markers from response text.
+func cleanThinkTags(response string) string {
+	for {
+		start := strings.Index(response, "<think>")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(response, "</think>")
+		if end == -1 {
+			response = response[:start]
+			break
+		}
+		response = response[:start] + response[end+8:]
+	}
+	response = strings.ReplaceAll(response, "```markdown", "")
+	response = strings.ReplaceAll(response, "```", "")
+	return strings.TrimSpace(response)
 }
