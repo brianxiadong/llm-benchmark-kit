@@ -14,7 +14,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +93,45 @@ type LongContextResult struct {
 	AvgThroughput float64                 `json:"avg_throughput"`
 }
 
+// EnvironmentInfo holds system environment information.
+type EnvironmentInfo struct {
+	Hostname    string            `json:"hostname"`
+	OS          string            `json:"os"`
+	Arch        string            `json:"arch"`
+	Kernel      string            `json:"kernel"`
+	CPUModel    string            `json:"cpu_model"`
+	CPUCores    int               `json:"cpu_cores"`
+	CPUThreads  int               `json:"cpu_threads"`
+	TotalMemory string            `json:"total_memory"`
+	GoVersion   string            `json:"go_version"`
+	ToolVersion string            `json:"tool_version"`
+	CollectTime string            `json:"collect_time"`
+	GPUInfo     string            `json:"gpu_info,omitempty"`
+	ExtraInfo   map[string]string `json:"extra_info,omitempty"`
+}
+
+// ConcurrencyLevelResult holds results for a single concurrency level.
+type ConcurrencyLevelResult struct {
+	Concurrency   int     `json:"concurrency"`
+	TotalRequests int     `json:"total_requests"`
+	SuccessCount  int     `json:"success_count"`
+	FailureCount  int     `json:"failure_count"`
+	AvgLatencyMs  float64 `json:"avg_latency_ms"`
+	MinLatencyMs  float64 `json:"min_latency_ms"`
+	MaxLatencyMs  float64 `json:"max_latency_ms"`
+	AvgTTFTMs     float64 `json:"avg_ttft_ms"`
+	Throughput    float64 `json:"throughput"` // tokens/s
+	RPS           float64 `json:"rps"`        // requests/s
+	TotalTokens   int     `json:"total_tokens"`
+	WallTimeMs    float64 `json:"wall_time_ms"`
+}
+
+// GraduatedConcurrencyResult holds results for all concurrency levels.
+type GraduatedConcurrencyResult struct {
+	Levels           []ConcurrencyLevelResult `json:"levels"`
+	RequestsPerLevel int                      `json:"requests_per_level"`
+}
+
 // FullTestReport contains the combined results from all test phases.
 type FullTestReport struct {
 	ModelName     string        `json:"model_name"`
@@ -99,11 +140,17 @@ type FullTestReport struct {
 	EndTime       time.Time     `json:"end_time"`
 	TotalDuration time.Duration `json:"total_duration"`
 
+	// Environment Info
+	Environment *EnvironmentInfo `json:"environment,omitempty"`
+
 	// Phase 1: Performance
 	FirstCallResults  *PhaseResult            `json:"first_call_results"`
 	ConcurrentResults *PhaseResult            `json:"concurrent_results"`
 	MultiTurnResults  *PhaseResult            `json:"multi_turn_results"`
 	BenchmarkReport   *result.BenchmarkReport `json:"benchmark_report,omitempty"`
+
+	// Phase 1.5: Graduated Concurrency Test
+	GraduatedConcurrency *GraduatedConcurrencyResult `json:"graduated_concurrency,omitempty"`
 
 	// Phase 2: Function Call
 	FunctionCallResult *FunctionCallResult `json:"function_call_result,omitempty"`
@@ -183,6 +230,15 @@ func (r *Runner) Run() (*FullTestReport, error) {
 
 	r.printHeader()
 
+	// ===== Collect Environment Info =====
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("🖥️  Collecting Environment Info")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	report.Environment = r.collectEnvironmentInfo()
+	r.printEnvironmentInfo(report.Environment)
+	fmt.Println()
+
 	// ===== Phase 1: Performance Benchmark =====
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	fmt.Println("📊 Phase 1: Performance Benchmark")
@@ -237,6 +293,17 @@ func (r *Runner) Run() (*FullTestReport, error) {
 	r.cfg.MaxTokens = originalMaxTokens
 
 	fmt.Println("✅ Phase 1 Complete!")
+	fmt.Println()
+
+	// ===== Phase 1.5: Graduated Concurrency Test =====
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("📈 Phase 1.5: Graduated Concurrency Test (逐级并发测试)")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+
+	report.GraduatedConcurrency = r.runGraduatedConcurrencyTest()
+
+	fmt.Println("✅ Phase 1.5 Complete!")
 	fmt.Println()
 
 	// ===== Phase 2: Function Call Test =====
@@ -538,6 +605,298 @@ func (r *Runner) printPhaseResults(phase *PhaseResult) {
 		}
 	}
 	fmt.Printf("   平均延迟: %.2f ms | 成功: %d/%d\n\n", phase.AvgLatencyMs, phase.Success, phase.Success+phase.Failure)
+}
+
+// ========== Environment Info Collection ==========
+
+func (r *Runner) collectEnvironmentInfo() *EnvironmentInfo {
+	env := &EnvironmentInfo{
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
+		CPUThreads:  runtime.NumCPU(),
+		GoVersion:   runtime.Version(),
+		ToolVersion: "1.0.0",
+		CollectTime: time.Now().Format("2006-01-02 15:04:05"),
+		ExtraInfo:   make(map[string]string),
+	}
+
+	// Hostname
+	if hostname, err := os.Hostname(); err == nil {
+		env.Hostname = hostname
+	}
+
+	// Kernel version
+	if runtime.GOOS == "linux" {
+		if out, err := exec.Command("uname", "-r").Output(); err == nil {
+			env.Kernel = strings.TrimSpace(string(out))
+		}
+		// CPU model
+		if out, err := exec.Command("bash", "-c", "grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2").Output(); err == nil {
+			env.CPUModel = strings.TrimSpace(string(out))
+		}
+		// CPU physical cores
+		if out, err := exec.Command("bash", "-c", "grep 'cpu cores' /proc/cpuinfo | head -1 | cut -d: -f2").Output(); err == nil {
+			coresStr := strings.TrimSpace(string(out))
+			fmt.Sscanf(coresStr, "%d", &env.CPUCores)
+		}
+		// Total memory
+		if out, err := exec.Command("bash", "-c", "grep 'MemTotal' /proc/meminfo | awk '{printf \"%.1f GB\", $2/1024/1024}'").Output(); err == nil {
+			env.TotalMemory = strings.TrimSpace(string(out))
+		}
+		// GPU info (nvidia-smi)
+		if out, err := exec.Command("bash", "-c", "nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null | head -4").Output(); err == nil {
+			gpuInfo := strings.TrimSpace(string(out))
+			if gpuInfo != "" {
+				env.GPUInfo = gpuInfo
+			}
+		}
+		// OS release
+		if out, err := exec.Command("bash", "-c", "cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d'\"' -f2").Output(); err == nil {
+			osRelease := strings.TrimSpace(string(out))
+			if osRelease != "" {
+				env.ExtraInfo["os_release"] = osRelease
+			}
+		}
+	} else if runtime.GOOS == "darwin" {
+		if out, err := exec.Command("uname", "-r").Output(); err == nil {
+			env.Kernel = strings.TrimSpace(string(out))
+		}
+		if out, err := exec.Command("sysctl", "-n", "machdep.cpu.brand_string").Output(); err == nil {
+			env.CPUModel = strings.TrimSpace(string(out))
+		}
+		if out, err := exec.Command("sysctl", "-n", "hw.physicalcpu").Output(); err == nil {
+			fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &env.CPUCores)
+		}
+		if out, err := exec.Command("bash", "-c", "sysctl -n hw.memsize | awk '{printf \"%.1f GB\", $1/1024/1024/1024}'").Output(); err == nil {
+			env.TotalMemory = strings.TrimSpace(string(out))
+		}
+		if out, err := exec.Command("sw_vers", "-productVersion").Output(); err == nil {
+			env.ExtraInfo["os_release"] = "macOS " + strings.TrimSpace(string(out))
+		}
+	}
+
+	// If CPU cores not detected, use threads count
+	if env.CPUCores == 0 {
+		env.CPUCores = env.CPUThreads
+	}
+
+	return env
+}
+
+func (r *Runner) printEnvironmentInfo(env *EnvironmentInfo) {
+	fmt.Println("   ┌─────────────────────────────────────────────────────────────┐")
+	fmt.Printf("   │ 主机名:    %-48s│\n", env.Hostname)
+	if env.ExtraInfo["os_release"] != "" {
+		fmt.Printf("   │ 操作系统:  %-48s│\n", env.ExtraInfo["os_release"])
+	}
+	fmt.Printf("   │ OS/Arch:   %-48s│\n", env.OS+"/"+env.Arch)
+	fmt.Printf("   │ 内核:      %-48s│\n", env.Kernel)
+	fmt.Printf("   │ CPU型号:   %-48s│\n", env.CPUModel)
+	fmt.Printf("   │ CPU核心:   %-3d 核 / %-3d 线程%-30s│\n", env.CPUCores, env.CPUThreads, "")
+	fmt.Printf("   │ 总内存:    %-48s│\n", env.TotalMemory)
+	if env.GPUInfo != "" {
+		lines := strings.Split(env.GPUInfo, "\n")
+		for i, line := range lines {
+			if i == 0 {
+				fmt.Printf("   │ GPU:       %-48s│\n", strings.TrimSpace(line))
+			} else {
+				fmt.Printf("   │            %-48s│\n", strings.TrimSpace(line))
+			}
+		}
+	}
+	fmt.Printf("   │ Go版本:    %-48s│\n", env.GoVersion)
+	fmt.Println("   └─────────────────────────────────────────────────────────────┘")
+}
+
+// ========== Graduated Concurrency Test ==========
+
+func (r *Runner) runGraduatedConcurrencyTest() *GraduatedConcurrencyResult {
+	// Default concurrency levels - start from higher levels since 1-3 already tested in Phase 1
+	concurrencyLevels := []int{4, 8, 16, 32, 64, 128}
+
+	result := &GraduatedConcurrencyResult{
+		Levels:           make([]ConcurrencyLevelResult, 0, len(concurrencyLevels)),
+		RequestsPerLevel: 0, // dynamic, shown per level
+	}
+
+	// Prompts for concurrency test (short, consistent tasks)
+	prompts := []string{
+		"请用一句话解释什么是人工智能。",
+		"请用一句话介绍云计算。",
+		"请用一句话说明区块链。",
+		"请用一句话描述物联网。",
+		"请用一句话解释大数据。",
+		"请用一句话说明5G技术。",
+		"请用一句话介绍机器学习。",
+		"请用一句话描述深度学习。",
+		"请用一句话解释自然语言处理。",
+		"请用一句话介绍计算机视觉。",
+		"请用一句话说明边缘计算。",
+		"请用一句话描述微服务架构。",
+		"请用一句话解释容器化技术。",
+		"请用一句话介绍DevOps。",
+		"请用一句话说明网络安全。",
+		"请用一句话描述数字孪生。",
+	}
+
+	fmt.Printf("   并发级别: %v | 每级请求数: max(并发数×2, 12)\n\n", concurrencyLevels)
+	fmt.Println("   ┌───────────┬──────────┬──────────┬──────────────┬──────────────┬──────────────┬──────────┬──────────┐")
+	fmt.Println("   │ 并发数    │ 成功/总数│ 平均延迟 │ 最小延迟     │ 最大延迟     │ 吞吐(tok/s)  │ RPS      │ 耗时(ms) │")
+	fmt.Println("   ├───────────┼──────────┼──────────┼──────────────┼──────────────┼──────────────┼──────────┼──────────┤")
+
+	for _, concurrency := range concurrencyLevels {
+		// Dynamic requests: at least 2x concurrency to fully saturate, minimum 12
+		requestsForLevel := concurrency * 2
+		if requestsForLevel < 12 {
+			requestsForLevel = 12
+		}
+		levelResult := r.runSingleConcurrencyLevel(concurrency, requestsForLevel, prompts)
+		result.Levels = append(result.Levels, levelResult)
+
+		fmt.Printf("   │ %-9d │ %4d/%-4d│ %8.0f │ %10.0f   │ %10.0f   │ %10.1f   │ %6.2f   │ %8.0f │\n",
+			levelResult.Concurrency,
+			levelResult.SuccessCount, levelResult.TotalRequests,
+			levelResult.AvgLatencyMs,
+			levelResult.MinLatencyMs,
+			levelResult.MaxLatencyMs,
+			levelResult.Throughput,
+			levelResult.RPS,
+			levelResult.WallTimeMs)
+	}
+
+	fmt.Println("   └───────────┴──────────┴──────────┴──────────────┴──────────────┴──────────────┴──────────┴──────────┘")
+	fmt.Println()
+
+	return result
+}
+
+func (r *Runner) runSingleConcurrencyLevel(concurrency, totalRequests int, prompts []string) ConcurrencyLevelResult {
+	levelResult := ConcurrencyLevelResult{
+		Concurrency:   concurrency,
+		TotalRequests: totalRequests,
+	}
+
+	type singleResult struct {
+		latencyMs float64
+		ttftMs    float64
+		tokens    int
+		success   bool
+	}
+
+	results := make([]singleResult, totalRequests)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	sem := make(chan struct{}, concurrency)
+
+	wallStart := time.Now()
+
+	for i := 0; i < totalRequests; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			prompt := prompts[idx%len(prompts)]
+			start := time.Now()
+			var firstTokenTime time.Time
+			gotFirstToken := false
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.cfg.TimeoutSec)*time.Second)
+			defer cancel()
+
+			input := workload.NewChatWorkload(
+				fmt.Sprintf("grad_c%d_%d", concurrency, idx),
+				[]workload.ChatMessage{{Role: "user", Content: prompt}},
+				256,
+			)
+
+			events, err := r.p.StreamChat(ctx, r.cfg, input)
+			if err != nil {
+				mu.Lock()
+				results[idx] = singleResult{
+					latencyMs: float64(time.Since(start).Milliseconds()),
+					success:   false,
+				}
+				mu.Unlock()
+				return
+			}
+
+			var tokens int
+			for event := range events {
+				if event.Type == provider.EventContent && !gotFirstToken {
+					firstTokenTime = time.Now()
+					gotFirstToken = true
+				}
+				if event.Type == provider.EventUsage && event.Usage != nil {
+					tokens = event.Usage.CompletionTokens
+				}
+				if event.Type == provider.EventError {
+					mu.Lock()
+					results[idx] = singleResult{
+						latencyMs: float64(time.Since(start).Milliseconds()),
+						success:   false,
+					}
+					mu.Unlock()
+					return
+				}
+			}
+
+			latency := float64(time.Since(start).Milliseconds())
+			ttft := latency
+			if gotFirstToken {
+				ttft = float64(firstTokenTime.Sub(start).Milliseconds())
+			}
+
+			mu.Lock()
+			results[idx] = singleResult{
+				latencyMs: latency,
+				ttftMs:    ttft,
+				tokens:    tokens,
+				success:   true,
+			}
+			mu.Unlock()
+		}(i)
+	}
+
+	wg.Wait()
+	wallTime := float64(time.Since(wallStart).Milliseconds())
+	levelResult.WallTimeMs = wallTime
+
+	// Aggregate results
+	var totalLatency, totalTTFT float64
+	var totalTokens int
+	minLatency := float64(1<<63 - 1)
+	maxLatency := float64(0)
+
+	for _, res := range results {
+		if res.success {
+			levelResult.SuccessCount++
+			totalLatency += res.latencyMs
+			totalTTFT += res.ttftMs
+			totalTokens += res.tokens
+			if res.latencyMs < minLatency {
+				minLatency = res.latencyMs
+			}
+			if res.latencyMs > maxLatency {
+				maxLatency = res.latencyMs
+			}
+		} else {
+			levelResult.FailureCount++
+		}
+	}
+
+	if levelResult.SuccessCount > 0 {
+		levelResult.AvgLatencyMs = totalLatency / float64(levelResult.SuccessCount)
+		levelResult.AvgTTFTMs = totalTTFT / float64(levelResult.SuccessCount)
+		levelResult.MinLatencyMs = minLatency
+		levelResult.MaxLatencyMs = maxLatency
+		levelResult.TotalTokens = totalTokens
+		levelResult.Throughput = float64(totalTokens) / (wallTime / 1000.0)
+		levelResult.RPS = float64(levelResult.SuccessCount) / (wallTime / 1000.0)
+	}
+
+	return levelResult
 }
 
 // ========== Phase 2: Function Call Test ==========
@@ -972,6 +1331,28 @@ func (r *Runner) generateFinalReport(report *FullTestReport) error {
 	sb.WriteString(fmt.Sprintf("| 总耗时 | %.2f 秒 |\n", report.TotalDuration.Seconds()))
 	sb.WriteString("\n")
 
+	// Environment Info
+	if report.Environment != nil {
+		env := report.Environment
+		sb.WriteString("## 环境信息\n\n")
+		sb.WriteString("| 项目 | 值 |\n")
+		sb.WriteString("|------|----|\n")
+		sb.WriteString(fmt.Sprintf("| 主机名 | %s |\n", env.Hostname))
+		if env.ExtraInfo["os_release"] != "" {
+			sb.WriteString(fmt.Sprintf("| 操作系统 | %s |\n", env.ExtraInfo["os_release"]))
+		}
+		sb.WriteString(fmt.Sprintf("| OS/Arch | %s/%s |\n", env.OS, env.Arch))
+		sb.WriteString(fmt.Sprintf("| 内核 | %s |\n", env.Kernel))
+		sb.WriteString(fmt.Sprintf("| CPU | %s |\n", env.CPUModel))
+		sb.WriteString(fmt.Sprintf("| CPU 核心/线程 | %d / %d |\n", env.CPUCores, env.CPUThreads))
+		sb.WriteString(fmt.Sprintf("| 内存 | %s |\n", env.TotalMemory))
+		if env.GPUInfo != "" {
+			sb.WriteString(fmt.Sprintf("| GPU | %s |\n", env.GPUInfo))
+		}
+		sb.WriteString(fmt.Sprintf("| Go 版本 | %s |\n", env.GoVersion))
+		sb.WriteString("\n")
+	}
+
 	// Phase 1: Performance Results
 	sb.WriteString("## Phase 1: 性能测试结果\n\n")
 
@@ -988,6 +1369,20 @@ func (r *Runner) generateFinalReport(report *FullTestReport) error {
 	if report.MultiTurnResults != nil {
 		sb.WriteString("### 1.3 多轮对话测试 (Multi-turn)\n\n")
 		r.writePhaseTable(&sb, report.MultiTurnResults)
+	}
+
+	// Phase 1.5: Graduated Concurrency Results
+	if report.GraduatedConcurrency != nil && len(report.GraduatedConcurrency.Levels) > 0 {
+		sb.WriteString("### 1.5 逐级并发测试 (Graduated Concurrency)\n\n")
+		sb.WriteString("| 并发数 | 成功/总数 | 平均延迟(ms) | 最小延迟(ms) | 最大延迟(ms) | 吞吐(tok/s) | RPS | 耗时(ms) |\n")
+		sb.WriteString("|--------|-----------|-------------|-------------|-------------|-------------|------|--------|\n")
+		for _, lv := range report.GraduatedConcurrency.Levels {
+			sb.WriteString(fmt.Sprintf("| %d | %d/%d | %.0f | %.0f | %.0f | %.1f | %.2f | %.0f |\n",
+				lv.Concurrency, lv.SuccessCount, lv.TotalRequests,
+				lv.AvgLatencyMs, lv.MinLatencyMs, lv.MaxLatencyMs,
+				lv.Throughput, lv.RPS, lv.WallTimeMs))
+		}
+		sb.WriteString("\n")
 	}
 
 	// Phase 2: Function Call Results
@@ -1093,6 +1488,13 @@ type ChartData struct {
 		Latency    []float64 `json:"latency"`
 		Throughput []float64 `json:"throughput"`
 	} `json:"longContext,omitempty"`
+	GraduatedConcurrency *struct {
+		Labels     []string  `json:"labels"`
+		AvgLatency []float64 `json:"avgLatency"`
+		Throughput []float64 `json:"throughput"`
+		RPS        []float64 `json:"rps"`
+		AvgTTFT    []float64 `json:"avgTTFT"`
+	} `json:"graduatedConcurrency,omitempty"`
 }
 
 func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) error {
@@ -1284,6 +1686,24 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 				chartData.LongContext.Latency = append(chartData.LongContext.Latency, 0)
 				chartData.LongContext.Throughput = append(chartData.LongContext.Throughput, 0)
 			}
+		}
+	}
+
+	// Graduated concurrency chart data
+	if report.GraduatedConcurrency != nil && len(report.GraduatedConcurrency.Levels) > 0 {
+		chartData.GraduatedConcurrency = &struct {
+			Labels     []string  `json:"labels"`
+			AvgLatency []float64 `json:"avgLatency"`
+			Throughput []float64 `json:"throughput"`
+			RPS        []float64 `json:"rps"`
+			AvgTTFT    []float64 `json:"avgTTFT"`
+		}{}
+		for _, lv := range report.GraduatedConcurrency.Levels {
+			chartData.GraduatedConcurrency.Labels = append(chartData.GraduatedConcurrency.Labels, fmt.Sprintf("C=%d", lv.Concurrency))
+			chartData.GraduatedConcurrency.AvgLatency = append(chartData.GraduatedConcurrency.AvgLatency, lv.AvgLatencyMs)
+			chartData.GraduatedConcurrency.Throughput = append(chartData.GraduatedConcurrency.Throughput, lv.Throughput)
+			chartData.GraduatedConcurrency.RPS = append(chartData.GraduatedConcurrency.RPS, lv.RPS)
+			chartData.GraduatedConcurrency.AvgTTFT = append(chartData.GraduatedConcurrency.AvgTTFT, lv.AvgTTFTMs)
 		}
 	}
 

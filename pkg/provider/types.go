@@ -16,6 +16,8 @@ const (
 	EventMeta StreamEventType = iota
 	// EventContent represents visible content (used for TTFT determination).
 	EventContent
+	// EventReasoning represents reasoning/thinking content (internal chain-of-thought).
+	EventReasoning
 	// EventUsage represents token usage information.
 	EventUsage
 	// EventEnd represents explicit end signal ([DONE] / finish_reason).
@@ -31,6 +33,8 @@ func (t StreamEventType) String() string {
 		return "meta"
 	case EventContent:
 		return "content"
+	case EventReasoning:
+		return "reasoning"
 	case EventUsage:
 		return "usage"
 	case EventEnd:

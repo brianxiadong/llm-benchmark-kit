@@ -258,9 +258,22 @@ func (p *Provider) parseStream(body io.ReadCloser, events chan<- provider.Stream
 			}
 		}
 
-		// Check for content - only use the content field
-		// reasoning/reasoning_content is the model's internal thinking, NOT the answer
+		// Check for content and reasoning
 		for _, choice := range resp.Choices {
+			// Emit reasoning/thinking content
+			reasoningText := choice.Delta.ReasoningContent
+			if reasoningText == "" {
+				reasoningText = choice.Delta.Reasoning
+			}
+			if reasoningText != "" {
+				events <- provider.StreamEvent{
+					Type: provider.EventReasoning,
+					Raw:  event.Data,
+					Text: reasoningText,
+				}
+			}
+
+			// Emit visible content
 			if choice.Delta.Content != "" {
 				// Accumulate for verbose logging
 				if verbose {

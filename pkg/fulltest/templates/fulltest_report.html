@@ -675,6 +675,38 @@
             </div>
         </section>
 
+        {{if .Report.Environment}}
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">🖥️</div>
+                <h2 class="section-title">环境信息</h2>
+            </div>
+            <div class="phase-card">
+                <table>
+                    <thead><tr><th>项目</th><th>值</th></tr></thead>
+                    <tbody>
+                        <tr><td>主机名</td><td>{{.Report.Environment.Hostname}}</td></tr>
+                        {{if .Report.Environment.ExtraInfo.os_release}}
+                        <tr><td>操作系统</td><td>{{index .Report.Environment.ExtraInfo "os_release"}}</td></tr>
+                        {{end}}
+                        <tr><td>OS / Arch</td><td>{{.Report.Environment.OS}} / {{.Report.Environment.Arch}}</td></tr>
+                        <tr><td>内核版本</td><td>{{.Report.Environment.Kernel}}</td></tr>
+                        <tr><td>CPU 型号</td><td>{{.Report.Environment.CPUModel}}</td></tr>
+                        <tr><td>CPU 核心 / 线程</td><td>{{.Report.Environment.CPUCores}} 核 / {{.Report.Environment.CPUThreads}} 线程</td></tr>
+                        <tr><td>总内存</td><td>{{.Report.Environment.TotalMemory}}</td></tr>
+                        {{if .Report.Environment.GPUInfo}}
+                        <tr><td>GPU</td><td>{{.Report.Environment.GPUInfo}}</td></tr>
+                        {{end}}
+                        <tr><td>Go 版本</td><td>{{.Report.Environment.GoVersion}}</td></tr>
+                        <tr><td>测试模型</td><td>{{.Report.ModelName}}</td></tr>
+                        <tr><td>API 地址</td><td>{{.Report.APIURL}}</td></tr>
+                        <tr><td>采集时间</td><td>{{.Report.Environment.CollectTime}}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {{end}}
+
         <section class="section">
             <div class="section-header">
                 <div class="section-icon">📊</div>
@@ -827,6 +859,52 @@
             </div>
             {{end}}
         </section>
+
+        {{if .Report.GraduatedConcurrency}}
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">📈</div>
+                <h2 class="section-title">Phase 1.5: 逐级并发测试</h2>
+            </div>
+            <div class="phase-card">
+                <h3>各并发级别测试结果 (每级请求数 = max(并发数×2, 12))</h3>
+                <table>
+                    <thead><tr><th>并发数</th><th>成功/总数</th><th>平均延迟 (ms)</th><th>最小延迟 (ms)</th><th>最大延迟 (ms)</th><th>平均TTFT (ms)</th><th>吞吐 (tok/s)</th><th>RPS</th><th>耗时 (ms)</th></tr></thead>
+                    <tbody>
+                    {{range .Report.GraduatedConcurrency.Levels}}
+                    <tr>
+                        <td><strong>{{.Concurrency}}</strong></td>
+                        <td class="{{if eq .FailureCount 0}}success{{else}}error{{end}}">{{.SuccessCount}}/{{.TotalRequests}}</td>
+                        <td>{{printf "%.0f" .AvgLatencyMs}}</td>
+                        <td>{{printf "%.0f" .MinLatencyMs}}</td>
+                        <td>{{printf "%.0f" .MaxLatencyMs}}</td>
+                        <td>{{printf "%.0f" .AvgTTFTMs}}</td>
+                        <td>{{printf "%.1f" .Throughput}}</td>
+                        <td>{{printf "%.2f" .RPS}}</td>
+                        <td>{{printf "%.0f" .WallTimeMs}}</td>
+                    </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+            </div>
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <span class="chart-title-icon"></span>
+                        <span class="chart-title">并发数 vs 延迟 & TTFT</span>
+                    </div>
+                    <div class="chart-container" id="grad-concurrency-latency-chart"></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <span class="chart-title-icon"></span>
+                        <span class="chart-title">并发数 vs 吞吐量 & RPS</span>
+                    </div>
+                    <div class="chart-container" id="grad-concurrency-throughput-chart"></div>
+                </div>
+            </div>
+        </section>
+        {{end}}
 
         <section class="section">
             <div class="section-header">
@@ -1189,6 +1267,143 @@
             window.addEventListener('resize', () => lcChart.resize());
         }
         {{end}}
+
+        // Graduated Concurrency Charts
+        if (chartData.graduatedConcurrency) {
+            const gc = chartData.graduatedConcurrency;
+            
+            // Latency & TTFT Chart
+            const gcLatencyChart = echarts.init(document.getElementById('grad-concurrency-latency-chart'));
+            gcLatencyChart.setOption({
+                ...chartTheme,
+                grid: { left: 60, right: 60, top: 40, bottom: 60 },
+                legend: {
+                    data: ['平均延迟 (ms)', '平均 TTFT (ms)'],
+                    bottom: 10,
+                    textStyle: { color: '#9ca3af' }
+                },
+                tooltip: {
+                    ...chartTheme.tooltip,
+                    trigger: 'axis'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: gc.labels || [],
+                    axisLabel: { color: '#6b7280' },
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    name: '并发级别', nameLocation: 'middle', nameGap: 35
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '时间 (ms)',
+                    axisLabel: { color: '#6b7280' },
+                    splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                    nameTextStyle: { color: '#9ca3af' }
+                },
+                series: [
+                    {
+                        name: '平均延迟 (ms)',
+                        type: 'line',
+                        data: gc.avgLatency || [],
+                        itemStyle: { color: '#f43f5e' },
+                        lineStyle: { width: 3 },
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        areaStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(244, 63, 94, 0.3)' },
+                                { offset: 1, color: 'rgba(244, 63, 94, 0.05)' }
+                            ])
+                        }
+                    },
+                    {
+                        name: '平均 TTFT (ms)',
+                        type: 'line',
+                        data: gc.avgTTFT || [],
+                        itemStyle: { color: '#6366f1' },
+                        lineStyle: { width: 3 },
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        areaStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(99, 102, 241, 0.3)' },
+                                { offset: 1, color: 'rgba(99, 102, 241, 0.05)' }
+                            ])
+                        }
+                    }
+                ],
+                animationDuration: 1000,
+                animationEasing: 'cubicOut'
+            });
+            window.addEventListener('resize', () => gcLatencyChart.resize());
+
+            // Throughput & RPS Chart
+            const gcThroughputChart = echarts.init(document.getElementById('grad-concurrency-throughput-chart'));
+            gcThroughputChart.setOption({
+                ...chartTheme,
+                grid: { left: 60, right: 60, top: 40, bottom: 60 },
+                legend: {
+                    data: ['吞吐量 (tok/s)', 'RPS'],
+                    bottom: 10,
+                    textStyle: { color: '#9ca3af' }
+                },
+                tooltip: {
+                    ...chartTheme.tooltip,
+                    trigger: 'axis'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: gc.labels || [],
+                    axisLabel: { color: '#6b7280' },
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    name: '并发级别', nameLocation: 'middle', nameGap: 35
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: 'Tokens/s',
+                        axisLabel: { color: '#6b7280' },
+                        splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                        nameTextStyle: { color: '#9ca3af' }
+                    },
+                    {
+                        type: 'value',
+                        name: 'RPS',
+                        axisLabel: { color: '#6b7280' },
+                        splitLine: { show: false },
+                        nameTextStyle: { color: '#9ca3af' }
+                    }
+                ],
+                series: [
+                    {
+                        name: '吞吐量 (tok/s)',
+                        type: 'bar',
+                        data: gc.throughput || [],
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#34d399' },
+                                { offset: 1, color: '#10b981' }
+                            ]),
+                            borderRadius: [4, 4, 0, 0]
+                        },
+                        barWidth: '40%'
+                    },
+                    {
+                        name: 'RPS',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        data: gc.rps || [],
+                        itemStyle: { color: '#f59e0b' },
+                        lineStyle: { width: 3 },
+                        symbol: 'circle',
+                        symbolSize: 10
+                    }
+                ],
+                animationDuration: 1000,
+                animationEasing: 'cubicOut'
+            });
+            window.addEventListener('resize', () => gcThroughputChart.resize());
+        }
     </script>
 </body>
 

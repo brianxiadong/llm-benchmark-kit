@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Soak Test Report - {{.Report.Model}}</title>
+    <script>{{.EChartsJS}}</script>
+    <style>
+        :root {
+            --bg-void: #030712;
+            --bg-deep: #0a0f1a;
+            --bg-surface: #111827;
+            --bg-elevated: #1f2937;
+            --bg-glass: rgba(17, 24, 39, 0.7);
+            --accent-primary: #6366f1;
+            --accent-secondary: #8b5cf6;
+            --accent-cyan: #22d3ee;
+            --success: #10b981;
+            --error: #f43f5e;
+            --warning: #f59e0b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: rgba(99, 102, 241, 0.15);
+            --radius: 12px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-void);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 40px 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2em;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+
+        header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1em;
+        }
+
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .card h2 {
+            font-size: 1.3em;
+            margin-bottom: 16px;
+            color: var(--accent-cyan);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+        }
+
+        .metric-item {
+            background: var(--bg-elevated);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .metric-item .label {
+            color: var(--text-muted);
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+
+        .metric-item .value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .metric-item .value.success { color: var(--success); }
+        .metric-item .value.error { color: var(--error); }
+        .metric-item .value.accent { color: var(--accent-primary); }
+
+        .chart-container {
+            width: 100%;
+            height: 400px;
+            margin: 16px 0;
+        }
+
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .chart-row { grid-template-columns: 1fr; }
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.85em;
+            text-transform: uppercase;
+        }
+
+        td { color: var(--text-secondary); }
+
+        tr:hover td { background: var(--bg-elevated); }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-muted);
+            font-size: 0.85em;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .status-badge.good { background: rgba(16,185,129,0.15); color: var(--success); }
+        .status-badge.warn { background: rgba(245,158,11,0.15); color: var(--warning); }
+        .status-badge.bad  { background: rgba(244,63,94,0.15); color: var(--error); }
+
+        .error-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .error-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: var(--bg-elevated);
+            border-radius: 6px;
+            margin-bottom: 6px;
+            font-size: 0.9em;
+        }
+
+        .error-item .msg { color: var(--error); flex: 1; word-break: break-all; }
+        .error-item .count { color: var(--text-muted); margin-left: 12px; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔥 LLM Soak Test Report</h1>
+            <div class="subtitle">{{.Report.Model}} · {{.Report.DurationSec}}s · {{.Report.Concurrency}} concurrency</div>
+        </header>
+
+        <!-- Overview -->
+        <div class="card">
+            <h2>📊 Overview</h2>
+            <div class="metrics-grid">
+                <div class="metric-item">
+                    <div class="label">Total Requests</div>
+                    <div class="value accent">{{.Report.TotalRequests}}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="label">Success</div>
+                    <div class="value success">{{.Report.TotalSuccess}}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="label">Failure</div>
+                    <div class="value error">{{.Report.TotalFailure}}</div>
+                </div>
+                <div class="metric-item">
+                    <div class="label">Success Rate</div>
+                    <div class="value" id="success-rate-value"></div>
+                </div>
+                <div class="metric-item">
+                    <div class="label">Overall RPS</div>
+                    <div class="value accent" id="rps-value"></div>
+                </div>
+                <div class="metric-item">
+                    <div class="label">Avg TTFT</div>
+                    <div class="value" id="ttft-value"></div>
+                </div>
+                <div class="metric-item">
+                    <div class="label">Avg Latency</div>
+                    <div class="value" id="latency-value"></div>
+                </div>
+                <div class="metric-item">
+                    <div class="label">Duration</div>
+                    <div class="value accent">{{.Report.DurationSec}}s</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row 1: Latency & TTFT Trends -->
+        <div class="chart-row">
+            <div class="card">
+                <h2>📈 Latency Trend</h2>
+                <div class="chart-container" id="chart-latency"></div>
+            </div>
+            <div class="card">
+                <h2>⚡ TTFT Trend</h2>
+                <div class="chart-container" id="chart-ttft"></div>
+            </div>
+        </div>
+
+        <!-- Charts Row 2: RPS & Success Rate -->
+        <div class="chart-row">
+            <div class="card">
+                <h2>🚀 RPS Trend</h2>
+                <div class="chart-container" id="chart-rps"></div>
+            </div>
+            <div class="card">
+                <h2>✅ Success Rate Trend</h2>
+                <div class="chart-container" id="chart-success"></div>
+            </div>
+        </div>
+
+        <!-- Charts Row 3: System Metrics -->
+        <div class="chart-row">
+            <div class="card">
+                <h2>💻 CPU & Memory</h2>
+                <div class="chart-container" id="chart-cpu-mem"></div>
+            </div>
+            <div class="card">
+                <h2>🎮 GPU Utilization & Memory</h2>
+                <div class="chart-container" id="chart-gpu"></div>
+            </div>
+        </div>
+
+        <!-- GPU Temperature & Power -->
+        <div class="chart-row">
+            <div class="card">
+                <h2>🌡️ GPU Temperature</h2>
+                <div class="chart-container" id="chart-gpu-temp"></div>
+            </div>
+            <div class="card">
+                <h2>⚡ GPU Power</h2>
+                <div class="chart-container" id="chart-gpu-power"></div>
+            </div>
+        </div>
+
+        <!-- Window Details Table -->
+        <div class="card">
+            <h2>📋 Window Snapshots</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Requests</th>
+                            <th>Success%</th>
+                            <th>Avg TTFT</th>
+                            <th>Avg Latency</th>
+                            <th>P50 Latency</th>
+                            <th>P95 Latency</th>
+                            <th>P99 Latency</th>
+                            <th>RPS</th>
+                            <th>Tokens/s</th>
+                        </tr>
+                    </thead>
+                    <tbody id="snapshots-table"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Errors -->
+        <div class="card" id="errors-card" style="display:none;">
+            <h2>❌ Error Summary</h2>
+            <div class="error-list" id="error-list"></div>
+        </div>
+
+        <footer>
+            Generated at {{.Generated}} · LLM Benchmark Kit - Soak Test
+        </footer>
+    </div>
+
+    <script>
+        // Data from Go template
+        const snapshots = {{.SnapshotsJSON}};
+        const metricsTimeline = {{.MetricsTimelineJSON}};
+        const errorCounts = {{.ErrorCountsJSON}};
+        const report = {
+            successRate: {{printf "%.4f" .Report.SuccessRate}},
+            overallRPS: {{printf "%.2f" .Report.OverallRPS}},
+            avgTTFTMs: {{printf "%.2f" .Report.AvgTTFTMs}},
+            avgLatencyMs: {{printf "%.2f" .Report.AvgLatencyMs}}
+        };
+
+        // Fill overview values
+        const srEl = document.getElementById('success-rate-value');
+        srEl.textContent = (report.successRate * 100).toFixed(1) + '%';
+        srEl.classList.add(report.successRate >= 0.99 ? 'success' : report.successRate >= 0.95 ? 'warn' : 'error');
+
+        document.getElementById('rps-value').textContent = report.overallRPS.toFixed(1);
+        document.getElementById('ttft-value').textContent = report.avgTTFTMs.toFixed(0) + 'ms';
+        document.getElementById('latency-value').textContent = report.avgLatencyMs.toFixed(0) + 'ms';
+
+        // Common chart theme
+        const chartTheme = {
+            backgroundColor: 'transparent',
+            textStyle: { color: '#94a3b8' },
+            legend: { textStyle: { color: '#94a3b8' } },
+            grid: { left: '8%', right: '5%', top: '15%', bottom: '12%' }
+        };
+
+        function getWindowLabels() {
+            return snapshots.map((s, i) => '#' + i);
+        }
+
+        // Latency Trend Chart
+        (function() {
+            const chart = echarts.init(document.getElementById('chart-latency'));
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['Avg', 'P50', 'P95', 'P99'], textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: 'ms', axisLabel: { color: '#64748b' } },
+                series: [
+                    { name: 'Avg', type: 'line', smooth: true, data: snapshots.map(s => s.avg_latency_ms.toFixed(0)), itemStyle: { color: '#6366f1' } },
+                    { name: 'P50', type: 'line', smooth: true, data: snapshots.map(s => s.p50_latency_ms), itemStyle: { color: '#22d3ee' } },
+                    { name: 'P95', type: 'line', smooth: true, data: snapshots.map(s => s.p95_latency_ms), itemStyle: { color: '#f59e0b' } },
+                    { name: 'P99', type: 'line', smooth: true, data: snapshots.map(s => s.p99_latency_ms), itemStyle: { color: '#f43f5e' } }
+                ]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // TTFT Trend Chart
+        (function() {
+            const chart = echarts.init(document.getElementById('chart-ttft'));
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['Avg', 'P50', 'P95', 'P99'], textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: 'ms', axisLabel: { color: '#64748b' } },
+                series: [
+                    { name: 'Avg', type: 'line', smooth: true, data: snapshots.map(s => s.avg_ttft_ms.toFixed(0)), itemStyle: { color: '#6366f1' } },
+                    { name: 'P50', type: 'line', smooth: true, data: snapshots.map(s => s.p50_ttft_ms), itemStyle: { color: '#22d3ee' } },
+                    { name: 'P95', type: 'line', smooth: true, data: snapshots.map(s => s.p95_ttft_ms), itemStyle: { color: '#f59e0b' } },
+                    { name: 'P99', type: 'line', smooth: true, data: snapshots.map(s => s.p99_ttft_ms), itemStyle: { color: '#f43f5e' } }
+                ]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // RPS Trend Chart
+        (function() {
+            const chart = echarts.init(document.getElementById('chart-rps'));
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: 'req/s', axisLabel: { color: '#64748b' } },
+                series: [{
+                    name: 'RPS', type: 'line', smooth: true,
+                    data: snapshots.map(s => s.rps.toFixed(2)),
+                    itemStyle: { color: '#10b981' },
+                    areaStyle: { color: 'rgba(16,185,129,0.15)' }
+                }]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // Success Rate Trend Chart
+        (function() {
+            const chart = echarts.init(document.getElementById('chart-success'));
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis', formatter: '{b}: {c}%' },
+                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: '%', min: 0, max: 100, axisLabel: { color: '#64748b' } },
+                series: [{
+                    name: 'Success Rate', type: 'line', smooth: true,
+                    data: snapshots.map(s => (s.success_rate * 100).toFixed(1)),
+                    itemStyle: { color: '#6366f1' },
+                    areaStyle: { color: 'rgba(99,102,241,0.15)' },
+                    markLine: {
+                        silent: true,
+                        data: [{ yAxis: 99, lineStyle: { color: '#f59e0b', type: 'dashed' }, label: { formatter: '99%' } }]
+                    }
+                }]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // CPU & Memory Chart
+        (function() {
+            if (!metricsTimeline || metricsTimeline.length === 0) {
+                document.getElementById('chart-cpu-mem').parentElement.style.display = 'none';
+                return;
+            }
+            const chart = echarts.init(document.getElementById('chart-cpu-mem'));
+            const labels = metricsTimeline.map((m, i) => {
+                const t = new Date(m.timestamp);
+                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
+            });
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                legend: { data: ['CPU %', 'Memory %'], textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
+                yAxis: { type: 'value', name: '%', min: 0, max: 100, axisLabel: { color: '#64748b' } },
+                series: [
+                    { name: 'CPU %', type: 'line', smooth: true, data: metricsTimeline.map(m => m.cpu_percent.toFixed(1)), itemStyle: { color: '#6366f1' } },
+                    { name: 'Memory %', type: 'line', smooth: true, data: metricsTimeline.map(m => m.mem_percent.toFixed(1)), itemStyle: { color: '#22d3ee' } }
+                ]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // GPU Utilization & Memory Chart
+        (function() {
+            if (!metricsTimeline || metricsTimeline.length === 0) {
+                document.getElementById('chart-gpu').parentElement.style.display = 'none';
+                return;
+            }
+            const hasGPU = metricsTimeline.some(m => m.gpu_metrics && m.gpu_metrics.length > 0);
+            if (!hasGPU) {
+                document.getElementById('chart-gpu').parentElement.style.display = 'none';
+                return;
+            }
+            const chart = echarts.init(document.getElementById('chart-gpu'));
+            const labels = metricsTimeline.map((m, i) => {
+                const t = new Date(m.timestamp);
+                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
+            });
+
+            // Collect all GPU indices
+            const gpuIndices = new Set();
+            metricsTimeline.forEach(m => {
+                if (m.gpu_metrics) m.gpu_metrics.forEach(g => gpuIndices.add(g.index));
+            });
+
+            const series = [];
+            gpuIndices.forEach(idx => {
+                const colors = ['#6366f1', '#8b5cf6', '#a855f7', '#ec4899'];
+                const memColors = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
+                series.push({
+                    name: 'GPU' + idx + ' Util%',
+                    type: 'line', smooth: true,
+                    data: metricsTimeline.map(m => {
+                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
+                        return g ? g.util_percent.toFixed(1) : null;
+                    }),
+                    itemStyle: { color: colors[idx % colors.length] }
+                });
+                series.push({
+                    name: 'GPU' + idx + ' Mem%',
+                    type: 'line', smooth: true,
+                    data: metricsTimeline.map(m => {
+                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
+                        return g ? g.mem_percent.toFixed(1) : null;
+                    }),
+                    itemStyle: { color: memColors[idx % memColors.length] },
+                    lineStyle: { type: 'dashed' }
+                });
+            });
+
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                legend: { data: series.map(s => s.name), textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
+                yAxis: { type: 'value', name: '%', min: 0, max: 100, axisLabel: { color: '#64748b' } },
+                series: series
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // GPU Temperature Chart
+        (function() {
+            if (!metricsTimeline || metricsTimeline.length === 0) {
+                document.getElementById('chart-gpu-temp').parentElement.style.display = 'none';
+                return;
+            }
+            const hasGPU = metricsTimeline.some(m => m.gpu_metrics && m.gpu_metrics.length > 0);
+            if (!hasGPU) {
+                document.getElementById('chart-gpu-temp').parentElement.style.display = 'none';
+                return;
+            }
+            const chart = echarts.init(document.getElementById('chart-gpu-temp'));
+            const labels = metricsTimeline.map((m) => {
+                const t = new Date(m.timestamp);
+                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
+            });
+
+            const gpuIndices = new Set();
+            metricsTimeline.forEach(m => {
+                if (m.gpu_metrics) m.gpu_metrics.forEach(g => gpuIndices.add(g.index));
+            });
+
+            const series = [];
+            const colors = ['#f43f5e', '#f59e0b', '#10b981', '#6366f1'];
+            gpuIndices.forEach(idx => {
+                series.push({
+                    name: 'GPU' + idx + ' °C',
+                    type: 'line', smooth: true,
+                    data: metricsTimeline.map(m => {
+                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
+                        return g ? g.temp_c : null;
+                    }),
+                    itemStyle: { color: colors[idx % colors.length] }
+                });
+            });
+
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                legend: { data: series.map(s => s.name), textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
+                yAxis: { type: 'value', name: '°C', axisLabel: { color: '#64748b' } },
+                series: series
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // GPU Power Chart
+        (function() {
+            if (!metricsTimeline || metricsTimeline.length === 0) {
+                document.getElementById('chart-gpu-power').parentElement.style.display = 'none';
+                return;
+            }
+            const hasGPU = metricsTimeline.some(m => m.gpu_metrics && m.gpu_metrics.length > 0);
+            if (!hasGPU) {
+                document.getElementById('chart-gpu-power').parentElement.style.display = 'none';
+                return;
+            }
+            const chart = echarts.init(document.getElementById('chart-gpu-power'));
+            const labels = metricsTimeline.map((m) => {
+                const t = new Date(m.timestamp);
+                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
+            });
+
+            const gpuIndices = new Set();
+            metricsTimeline.forEach(m => {
+                if (m.gpu_metrics) m.gpu_metrics.forEach(g => gpuIndices.add(g.index));
+            });
+
+            const series = [];
+            const colors = ['#f59e0b', '#6366f1', '#10b981', '#f43f5e'];
+            gpuIndices.forEach(idx => {
+                series.push({
+                    name: 'GPU' + idx + ' W',
+                    type: 'line', smooth: true,
+                    data: metricsTimeline.map(m => {
+                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
+                        return g ? g.power_w : null;
+                    }),
+                    itemStyle: { color: colors[idx % colors.length] },
+                    areaStyle: { opacity: 0.1 }
+                });
+            });
+
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                legend: { data: series.map(s => s.name), textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
+                yAxis: { type: 'value', name: 'W', axisLabel: { color: '#64748b' } },
+                series: series
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // Fill snapshots table
+        (function() {
+            const tbody = document.getElementById('snapshots-table');
+            snapshots.forEach(s => {
+                const sr = (s.success_rate * 100).toFixed(1);
+                let srClass = 'good';
+                if (sr < 99) srClass = 'warn';
+                if (sr < 95) srClass = 'bad';
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>#${s.window_index}</td>
+                    <td>${s.total_requests}</td>
+                    <td><span class="status-badge ${srClass}">${sr}%</span></td>
+                    <td>${s.avg_ttft_ms.toFixed(0)}ms</td>
+                    <td>${s.avg_latency_ms.toFixed(0)}ms</td>
+                    <td>${s.p50_latency_ms}ms</td>
+                    <td>${s.p95_latency_ms}ms</td>
+                    <td>${s.p99_latency_ms}ms</td>
+                    <td>${s.rps.toFixed(1)}</td>
+                    <td>${s.token_throughput.toFixed(1)}</td>
+                `;
+                tbody.appendChild(row);
+            });
+        })();
+
+        // Fill errors
+        (function() {
+            if (!errorCounts || Object.keys(errorCounts).length === 0) return;
+            document.getElementById('errors-card').style.display = 'block';
+            const list = document.getElementById('error-list');
+            const sorted = Object.entries(errorCounts).sort((a, b) => b[1] - a[1]);
+            sorted.forEach(([msg, count]) => {
+                const div = document.createElement('div');
+                div.className = 'error-item';
+                div.innerHTML = `<span class="msg">${msg}</span><span class="count">${count}</span>`;
+                list.appendChild(div);
+            });
+        })();
+    </script>
+</body>
+</html>

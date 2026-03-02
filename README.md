@@ -8,7 +8,11 @@
 
 - **一键完整测试**：`-full-test` 模式自动运行性能测试 + Function Call 测试 + 长上下文测试 + 会议纪要生成测试
 - **会议纪要并发压测**：`-summary-bench` 模式支持自定义并发数的会议纪要压力测试
+- **Soak 耐久测试**：`-soak` 模式支持长时间稳定性压测（12h+），实时监控系统资源，生成 ECharts 可视化趋势报告
+- **混合负载压测**：`-soak-long-concurrency` 支持短请求 + 长请求（2048+ tokens）混合比例，模拟真实业务场景
+- **Thinking 模型支持**：自动识别 Qwen3/DeepSeek 等 thinking 模型的 reasoning_content，准确统计 TTFT
 - **多模型对比报告**：`./compare.sh` 一键生成多模型对比分析 HTML 报告
+- **报告离线重建**：`-soak-report` 从服务器下载的日志文件本地重建 HTML 报告
 - **单文件交付**：CGO=0 静态二进制，客户环境直接运行
 - **精准流式指标**：支持 SSE 流式处理，可靠计算 TTFT/Latency
 - **多架构支持**：amd64/arm64 原生支持，Docker multi-arch
@@ -109,7 +113,72 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
   -meeting-time "2026-01-22 10:00"
 ```
 
-#### 5. 多模型对比报告
+#### 5. Soak Test 模式（长时间耐久测试）
+
+对 LLM 服务进行长时间稳定性压测，检测内存泄漏、性能衰退等问题：
+
+```bash
+# 基础用法：50 并发跑 12 小时
+./bin/llm-benchmark-kit -soak \
+  -url http://your-llm-api/v1/chat/completions \
+  -model your-model \
+  -token $API_KEY \
+  -soak-duration 43200 \
+  -soak-concurrency 50 \
+  -soak-window 60 \
+  -soak-metrics-interval 30
+```
+
+**混合负载模式**（推荐）：40 个短请求 worker + 10 个长请求 worker，模拟真实业务：
+
+```bash
+./bin/llm-benchmark-kit -soak \
+  -url http://your-llm-api/v1/chat/completions \
+  -model your-model \
+  -soak-duration 43200 \
+  -soak-concurrency 50 \
+  -soak-long-concurrency 10 \
+  -soak-long-max-tokens 2048 \
+  -soak-window 60 \
+  -soak-metrics-interval 30
+```
+
+输出包含：
+- 实时窗口统计（RPS、成功率、延迟、TTFT）
+- 实时错误分类（timeout、503_service_unavailable、429_rate_limited 等）
+- 系统资源监控（CPU、内存、GPU 利用率/显存/温度/功率）
+- ECharts 暗色主题交互式可视化报告
+- 每请求 JSONL 日志（支持离线重建报告）
+
+启动时显示负载分布：
+```
+👥 Concurrency:      50
+   ├─ Short workers: 40 (max_tokens=256)
+   └─ Long workers:  10 (max_tokens=2048)
+```
+
+运行中实时输出：
+```
+[Soak] Window #5 | Requests: 305 | Success: 100.0% | AvgLatency: 8891ms | AvgTTFT: 124ms | RPS: 5.1
+[Soak] System: CPU: 12.3% | Mem: 28012/1028470MB (2.7%)
+```
+
+#### 6. Soak Report 重建模式
+
+从服务器下载日志后，在本地重建 HTML 报告（无需连接 LLM 服务）：
+
+```bash
+# 从服务器下载日志目录
+scp -r root@server:/path/to/output/soaktest_xxx ./local/
+
+# 本地重建报告
+./bin/llm-benchmark-kit -soak-report ./local/soaktest_xxx
+
+# 或指定输出目录
+./bin/llm-benchmark-kit -soak-report ./local/soaktest_xxx -soak-report-output ./reports/
+```
+
+#### 7. 多模型对比报告
 
 运行多次 Full Test 后，一键生成多模型对比分析报告：
 
@@ -155,6 +224,8 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
 |------|------|
 | `-full-test` | 运行完整测试套件（性能 + Function Call + 长上下文 + 会议纪要） |
 | `-summary-bench` | 会议纪要并发压测模式 |
+| `-soak` | Soak 耐久测试模式（长时间稳定性压测） |
+| `-soak-report` | 从日志重建 Soak 报告（无需 LLM 服务） |
 | `-transcript-file` | 指定会议记录文件，启用 Summary 模式 |
 | (默认) | Benchmark 模式 |
 
@@ -187,6 +258,25 @@ go install github.com/brianxiadong/llm-benchmark-kit/cmd/llm-benchmark-kit@lates
 | `-transcript-file` | | 会议记录文件路径 |
 | `-chunk-size` | 8000 | 每个分片的最大字符数 |
 | `-meeting-time` | (当前时间) | 会议时间，用于报告标题 |
+
+### Soak Test 模式参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `-soak` | false | 启用 Soak 耐久测试模式 |
+| `-soak-duration` | 300 | 测试持续时间（秒），12 小时 = 43200 |
+| `-soak-concurrency` | 5 | 并发 worker 总数 |
+| `-soak-window` | 30 | 窗口快照间隔（秒） |
+| `-soak-metrics-interval` | 10 | 系统指标采集间隔（秒） |
+| `-soak-long-concurrency` | 0 | 长请求 worker 数（0=全短请求） |
+| `-soak-long-max-tokens` | 2048 | 长请求的 max_tokens |
+
+### Soak Report 重建参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `-soak-report` | | 日志目录路径，启用报告重建模式 |
+| `-soak-report-output` | (同输入目录) | 重建报告输出目录 |
 
 ## 输出文件
 
@@ -221,6 +311,25 @@ output/summarybench_{model}_{timestamp}/
 ```
 local/comparison_{timestamp}.html  # 多模型对比 HTML 报告
 ```
+
+### Soak Test 模式输出
+
+```
+output/soaktest_{model}_{timestamp}/
+├── soak_report.html          # ECharts 交互式可视化报告（暗色主题）
+├── soak_report.md            # Markdown 文本报告
+├── soak_report.json          # JSON 完整报告数据
+├── soak_log.jsonl            # 每请求详细日志（含 workload_type 标记）
+└── snapshots.jsonl           # 时间窗口快照日志
+```
+
+HTML 报告包含以下 ECharts 图表：
+- 延迟趋势图（Avg/P50/P95/P99）
+- TTFT 趋势图
+- RPS 吞吐量趋势图
+- 成功率趋势图
+- CPU/内存使用率趋势图
+- GPU 利用率/显存/温度/功率趋势图（如有 nvidia-smi）
 
 ### Benchmark 模式输出
 
@@ -300,15 +409,21 @@ make docker
 │   │   ├── templates/       # HTML 报告模板
 │   │   └── assets/          # 内嵌 JS/字体资源
 │   ├── provider/            # Provider 接口和实现
-│   │   └── openai/          # OpenAI Provider
+│   │   └── openai/          # OpenAI Provider（支持 reasoning_content）
 │   ├── result/              # 结果类型
 │   ├── runner/              # 基准测试运行器
 │   │   └── templates/       # Benchmark HTML 模板
+│   ├── soaktest/            # Soak 耐久测试
+│   │   ├── soaktest.go      # 核心运行器（混合负载 worker 调度）
+│   │   ├── snapshot.go      # 时间窗口聚合 & 错误分类
+│   │   ├── sysmetrics.go    # 系统资源采集（CPU/Mem/GPU）
+│   │   ├── report.go        # 报告生成 & 离线重建
+│   │   └── templates/       # ECharts HTML 报告模板
 │   ├── sse/                 # SSE 解析器
 │   ├── stats/               # 统计工具
 │   ├── summarizer/          # 会议纪要生成器
 │   ├── summarybench/        # 会议纪要并发压测
-│   └── workload/            # 工作负载定义
+│   └── workload/            # 工作负载定义（短/长 prompt 生成）
 ├── tools/
 │   └── compare/             # 多模型对比报告工具
 │       ├── compare_report.py

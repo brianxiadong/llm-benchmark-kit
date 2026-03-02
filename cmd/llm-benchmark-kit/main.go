@@ -16,6 +16,7 @@ import (
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/provider"
 	_ "github.com/brianxiadong/llm-benchmark-kit/pkg/provider/openai" // Register OpenAI provider
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/runner"
+	"github.com/brianxiadong/llm-benchmark-kit/pkg/soaktest"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/summarizer"
 	"github.com/brianxiadong/llm-benchmark-kit/pkg/summarybench"
 )
@@ -73,6 +74,19 @@ func main() {
 	summaryBenchConcurrency := flag.Int("sb-concurrency", 5, "Concurrency for summary benchmark")
 	summaryBenchRequests := flag.Int("sb-requests", 20, "Total requests for summary benchmark")
 
+	// Soak Test Mode
+	soakTest := flag.Bool("soak", false, "Run soak/endurance test (long-running stability test)")
+	soakDuration := flag.Int("soak-duration", 300, "Soak test duration in seconds")
+	soakConcurrency := flag.Int("soak-concurrency", 5, "Soak test concurrency")
+	soakWindow := flag.Int("soak-window", 30, "Soak test snapshot window interval in seconds")
+	soakMetricsInterval := flag.Int("soak-metrics-interval", 10, "System metrics collection interval in seconds")
+	soakLongConcurrency := flag.Int("soak-long-concurrency", 0, "Number of workers for long requests (0 = all short)")
+	soakLongMaxTokens := flag.Int("soak-long-max-tokens", 2048, "Max tokens for long request workers")
+
+	// Soak Report Rebuild Mode
+	soakReportDir := flag.String("soak-report", "", "Rebuild soak report from logs in the given directory (no server needed)")
+	soakReportOutput := flag.String("soak-report-output", "", "Output directory for rebuilt report (default: same as input)")
+
 	// Version flag
 	showVersion := flag.Bool("version", false, "Show version information")
 
@@ -83,7 +97,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  Benchmark Mode:      Run performance tests against LLM API\n")
 		fmt.Fprintf(os.Stderr, "  Summary Mode:        Summarize meeting transcripts (use -transcript-file)\n")
 		fmt.Fprintf(os.Stderr, "  Full Test Mode:      Run complete test suite (use -full-test)\n")
-		fmt.Fprintf(os.Stderr, "  Summary Bench Mode:  Concurrent meeting summary benchmark (use -summary-bench)\n\n")
+		fmt.Fprintf(os.Stderr, "  Summary Bench Mode:  Concurrent meeting summary benchmark (use -summary-bench)\n")
+		fmt.Fprintf(os.Stderr, "  Soak Test Mode:      Long-running stability/endurance test (use -soak)\n")
+		fmt.Fprintf(os.Stderr, "  Soak Report Mode:    Rebuild report from soak test logs (use -soak-report)\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		flag.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
@@ -95,6 +111,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  %s -full-test -url http://localhost:8000/v1/chat/completions -model qwen\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "  # Summary benchmark mode (concurrent meeting summary stress test)\n")
 		fmt.Fprintf(os.Stderr, "  %s -summary-bench -sb-concurrency 10 -sb-requests 50 -url http://localhost:8000/v1/chat/completions -model qwen\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Soak test mode (long-running stability test with system metrics)\n")
+		fmt.Fprintf(os.Stderr, "  %s -soak -soak-duration 3600 -soak-concurrency 10 -soak-window 60 -url http://localhost:8000/v1/chat/completions -model qwen\n\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "  # Rebuild soak report from logs (download logs from server, generate report locally)\n")
+		fmt.Fprintf(os.Stderr, "  %s -soak-report ./output/soaktest_qwen_20260302_120000\n\n", os.Args[0])
 	}
 
 	flag.Parse()
@@ -104,12 +124,24 @@ func main() {
 		os.Exit(0)
 	}
 
+	// Soak report rebuild mode does not require -url or -model
+	if *soakReportDir != "" {
+		runSoakReportRebuild(*soakReportDir, *soakReportOutput)
+		return
+	}
+
 	// Validate required flags
 	if cfg.URL == "" {
 		log.Fatal("Error: -url is required")
 	}
 	if cfg.ModelName == "" {
 		log.Fatal("Error: -model is required")
+	}
+
+	// Check if running in soak test mode
+	if *soakTest {
+		runSoakTest(cfg, *soakDuration, *soakConcurrency, *soakWindow, *soakMetricsInterval, *soakLongConcurrency, *soakLongMaxTokens)
+		return
 	}
 
 	// Check if running in full-test mode
@@ -329,4 +361,101 @@ func runSummaryBench(cfg *config.GlobalConfig, transcriptFile string, chunkSize,
 	fmt.Println("║              Summary Benchmark Complete!                        ║")
 	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
 	fmt.Printf("📁 Results saved to: %s\n", outputDir)
+}
+
+func runSoakTest(cfg *config.GlobalConfig, duration, concurrency, window, metricsInterval, longConcurrency, longMaxTokens int) {
+	// Auto-generate output directory
+	modelName := cfg.ModelName
+	modelName = strings.ReplaceAll(modelName, "/", "_")
+	modelName = strings.ReplaceAll(modelName, ":", "_")
+	modelName = strings.ReplaceAll(modelName, " ", "_")
+	timestamp := time.Now().Format("20060102_150405")
+	outputDir := filepath.Join("output", fmt.Sprintf("soaktest_%s_%s", modelName, timestamp))
+
+	soakCfg := &soaktest.SoakConfig{
+		DurationSec:     duration,
+		Concurrency:     concurrency,
+		WindowSec:       window,
+		MetricsInterval: metricsInterval,
+		LongConcurrency: longConcurrency,
+		LongMaxTokens:   longMaxTokens,
+	}
+
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║         LLM Benchmark Kit - Soak Test Mode                     ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("📋 Model:            %s\n", cfg.ModelName)
+	fmt.Printf("🔗 URL:              %s\n", cfg.URL)
+	fmt.Printf("👥 Concurrency:      %d\n", concurrency)
+	if longConcurrency > 0 {
+		fmt.Printf("   ├─ Short workers: %d (max_tokens=%d)\n", concurrency-longConcurrency, cfg.MaxTokens)
+		fmt.Printf("   └─ Long workers:  %d (max_tokens=%d)\n", longConcurrency, longMaxTokens)
+	}
+	fmt.Printf("⏱️  Duration:         %ds\n", duration)
+	fmt.Printf("📊 Window Interval:  %ds\n", window)
+	fmt.Printf("💻 Metrics Interval: %ds\n", metricsInterval)
+	fmt.Printf("📁 Output:           %s\n", outputDir)
+	fmt.Println()
+
+	// Get the provider
+	p, err := provider.Get(cfg.ProviderType)
+	if err != nil {
+		log.Fatalf("Error: %v\nAvailable providers: %v", err, provider.List())
+	}
+
+	r := soaktest.NewRunner(cfg, soakCfg, p, outputDir)
+	report, err := r.Run()
+	if err != nil {
+		log.Fatalf("Soak test failed: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                  Soak Test Complete!                            ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("📊 Duration:     %ds\n", report.DurationSec)
+	fmt.Printf("📝 Total Reqs:   %d\n", report.TotalRequests)
+	fmt.Printf("✅ Success:      %d (%.1f%%)\n", report.TotalSuccess, report.SuccessRate*100)
+	fmt.Printf("❌ Failure:      %d\n", report.TotalFailure)
+	fmt.Printf("🚀 Overall RPS:  %.2f\n", report.OverallRPS)
+	fmt.Printf("⚡ Avg TTFT:     %.0fms\n", report.AvgTTFTMs)
+	fmt.Printf("⏱️  Avg Latency:  %.0fms\n", report.AvgLatencyMs)
+	fmt.Printf("📊 Windows:      %d\n", len(report.Snapshots))
+	fmt.Printf("📁 Results:      %s\n", outputDir)
+	fmt.Printf("📄 HTML Report:  %s/soak_report.html\n", outputDir)
+	fmt.Printf("📄 JSON Report:  %s/soak_report.json\n", outputDir)
+	fmt.Printf("📄 Request Log:  %s/soak_log.jsonl\n", outputDir)
+}
+
+func runSoakReportRebuild(inputDir, outputDir string) {
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════════╗")
+	fmt.Println("║              Soak Report Rebuild Mode                           ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("📂 Input dir:  %s\n", inputDir)
+	fmt.Printf("📁 Output dir: %s\n", outputDir)
+	fmt.Println()
+
+	report, err := soaktest.RebuildReportFromDir(inputDir, outputDir)
+	if err != nil {
+		log.Fatalf("Failed to rebuild report: %v", err)
+	}
+
+	fmt.Println("✅ Report rebuilt successfully!")
+	fmt.Println()
+	fmt.Printf("📊 Duration:     %ds\n", report.DurationSec)
+	fmt.Printf("📝 Total Reqs:   %d\n", report.TotalRequests)
+	fmt.Printf("✅ Success:      %d (%.1f%%)\n", report.TotalSuccess, report.SuccessRate*100)
+	fmt.Printf("❌ Failure:      %d\n", report.TotalFailure)
+	fmt.Printf("🚀 Overall RPS:  %.2f\n", report.OverallRPS)
+	fmt.Printf("⚡ Avg TTFT:     %.0fms\n", report.AvgTTFTMs)
+	fmt.Printf("⏱️  Avg Latency:  %.0fms\n", report.AvgLatencyMs)
+	fmt.Printf("📊 Windows:      %d\n", len(report.Snapshots))
+	fmt.Printf("📁 Results:      %s\n", outputDir)
+	fmt.Printf("📄 HTML Report:  %s/soak_report.html\n", outputDir)
+	fmt.Printf("📄 JSON Report:  %s/soak_report.json\n", outputDir)
 }
