@@ -203,14 +203,14 @@
         /* Metrics grid */
         .metrics-grid {
             display: grid;
-            grid-template-columns: repeat(6, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 1rem;
             margin-bottom: 2.5rem;
         }
 
         @media (max-width: 1200px) {
             .metrics-grid {
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(2, 1fr);
             }
         }
 
@@ -320,8 +320,14 @@
 
         .charts-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
+        }
+
+        @media (max-width: 1200px) {
+            .charts-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
         }
 
         @media (max-width: 900px) {
@@ -599,6 +605,303 @@
         .echarts-tooltip {
             font-family: var(--font-display) !important;
         }
+
+        /* Bottleneck analysis section */
+        .analysis-section {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 2.5rem;
+            animation: fadeInUp 0.6s ease-out backwards;
+            animation-delay: 0.5s;
+        }
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            margin-top: 1rem;
+        }
+
+        @media (max-width: 900px) {
+            .analysis-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .analysis-item {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .analysis-item-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .analysis-badge {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.2rem 0.6rem;
+            border-radius: 6px;
+        }
+
+        .badge-compute {
+            background: rgba(99, 102, 241, 0.15);
+            color: var(--accent-primary);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .badge-memory {
+            background: rgba(168, 85, 247, 0.15);
+            color: var(--accent-tertiary);
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+
+        .badge-balanced {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .analysis-item h4 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .analysis-item p {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 0.5rem;
+        }
+
+        .analysis-ratio {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .ratio-bar {
+            flex: 1;
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .ratio-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 1s ease-out;
+        }
+
+        .ratio-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            white-space: nowrap;
+        }
+
+        /* Evaluation Summary Section */
+        .eval-summary {
+            margin-bottom: 2.5rem;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 1.5rem 2rem;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.6s ease-out backwards;
+            animation-delay: 0.05s;
+        }
+
+        .eval-summary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--success), var(--warning), var(--error));
+            opacity: 0.8;
+        }
+
+        .eval-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .eval-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .eval-overall {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .eval-grade {
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: 800;
+            padding: 0.25rem 1rem;
+            border-radius: 10px;
+            letter-spacing: 0.05em;
+        }
+
+        .grade-excellent {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .grade-pass {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .grade-fail {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .eval-verdict {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 1.25rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-surface);
+            border-radius: 10px;
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .eval-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        @media (max-width: 1200px) {
+            .eval-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 640px) {
+            .eval-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .eval-item {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .eval-item::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100%;
+        }
+
+        .eval-item.excellent::after {
+            background: var(--success);
+        }
+
+        .eval-item.pass::after {
+            background: var(--warning);
+        }
+
+        .eval-item.fail::after {
+            background: var(--error);
+        }
+
+        .eval-item-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .eval-item-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .eval-item-badge {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .eval-item-badge.excellent {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+        }
+
+        .eval-item-badge.pass {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+        }
+
+        .eval-item-badge.fail {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--error);
+        }
+
+        .eval-item-value {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+        }
+
+        .eval-item-threshold {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .eval-item-threshold strong {
+            color: var(--text-tertiary);
+        }
     </style>
 </head>
 
@@ -629,6 +932,21 @@
             </div>
         </header>
 
+        <!-- Evaluation Summary -->
+        <section class="eval-summary" id="eval-summary">
+            <div class="eval-header">
+                <h3 class="eval-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Model Evaluation Summary
+                </h3>
+                <div class="eval-overall" id="eval-overall"></div>
+            </div>
+            <div class="eval-verdict" id="eval-verdict"></div>
+            <div class="eval-grid" id="eval-grid"></div>
+        </section>
+
         <section class="metrics-grid">
             <div class="metric-card">
                 <div class="metric-label">Total Requests</div>
@@ -639,20 +957,28 @@
                 <div class="metric-value success" id="success-rate"></div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Avg TTFT</div>
+                <div class="metric-label">Avg TTFT <span class="metric-unit">(Prefill)</span></div>
                 <div class="metric-value" id="avg-ttft"></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Decode Time</div>
+                <div class="metric-value" id="avg-decode"></div>
             </div>
             <div class="metric-card">
                 <div class="metric-label">Avg Latency</div>
                 <div class="metric-value" id="avg-latency"></div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Throughput</div>
-                <div class="metric-value accent" id="rps"></div>
+                <div class="metric-label">Prefill Speed</div>
+                <div class="metric-value accent" id="prefill-speed"></div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Token Rate <span class="metric-unit">({{.Report.TokenMode}})</span></div>
-                <div class="metric-value" id="throughput"></div>
+                <div class="metric-label">Decode Speed</div>
+                <div class="metric-value accent" id="decode-speed"></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Throughput</div>
+                <div class="metric-value" id="rps"></div>
             </div>
         </section>
 
@@ -662,7 +988,7 @@
                     <div class="chart-header">
                         <h3 class="chart-title">
                             <span class="chart-title-icon"></span>
-                            TTFT Distribution
+                            TTFT Distribution (Prefill)
                         </h3>
                     </div>
                     <div class="chart-container" id="ttft-chart"></div>
@@ -690,7 +1016,35 @@
                     <div class="chart-header">
                         <h3 class="chart-title">
                             <span class="chart-title-icon"></span>
-                            Latency Distribution
+                            Decode Time Distribution
+                        </h3>
+                    </div>
+                    <div class="chart-container" id="decode-chart"></div>
+                    <div class="percentile-grid">
+                        <div class="percentile-item">
+                            <div class="percentile-label">Average</div>
+                            <div class="percentile-value" id="avg-decode-table"></div>
+                        </div>
+                        <div class="percentile-item p50">
+                            <div class="percentile-label">P50</div>
+                            <div class="percentile-value">{{.Report.P50DecodeMs}}ms</div>
+                        </div>
+                        <div class="percentile-item p95">
+                            <div class="percentile-label">P95</div>
+                            <div class="percentile-value">{{.Report.P95DecodeMs}}ms</div>
+                        </div>
+                        <div class="percentile-item p99">
+                            <div class="percentile-label">P99</div>
+                            <div class="percentile-value">{{.Report.P99DecodeMs}}ms</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <span class="chart-title-icon"></span>
+                            Latency Distribution (E2E)
                         </h3>
                     </div>
                     <div class="chart-container" id="latency-chart"></div>
@@ -747,6 +1101,19 @@
             </div>
         </section>
 
+        <!-- Bottleneck Analysis Section -->
+        <section class="analysis-section" id="bottleneck-section">
+            <div class="chart-header">
+                <h3 class="chart-title">
+                    <span class="chart-title-icon" style="background: linear-gradient(135deg, #f59e0b, #ef4444);"></span>
+                    Bottleneck Analysis
+                </h3>
+            </div>
+            <div class="analysis-grid" id="analysis-grid">
+                <!-- Populated by JavaScript -->
+            </div>
+        </section>
+
         {{if or .Report.FirstContentRaw .Report.MiddleFramesRaw .Report.FinalFrameRaw}}
         <section class="sample-section">
             <div class="sample-header">
@@ -782,20 +1149,140 @@
     <script>
         const report = {{.ReportJSON}};
 
-        // Format numbers with animation-ready values
+        // Format numbers
         const successRate = (report.success_rate * 100).toFixed(2);
         const avgTtft = report.avg_ttft_ms.toFixed(2);
+        const avgDecode = report.avg_decode_ms ? report.avg_decode_ms.toFixed(2) : '—';
         const avgLatency = report.avg_latency_ms.toFixed(2);
         const rps = report.rps.toFixed(2);
-        const throughput = report.token_throughput.toFixed(2);
+        const prefillSpeed = report.prefill_speed ? report.prefill_speed.toFixed(1) : '—';
+        const decodeSpeedVal = report.decode_speed ? report.decode_speed.toFixed(1) : '—';
 
         document.getElementById('success-rate').textContent = successRate + '%';
         document.getElementById('avg-ttft').innerHTML = avgTtft + '<span class="metric-unit">ms</span>';
+        document.getElementById('avg-decode').innerHTML = (avgDecode !== '—' ? avgDecode + '<span class="metric-unit">ms</span>' : '—');
         document.getElementById('avg-latency').innerHTML = avgLatency + '<span class="metric-unit">ms</span>';
         document.getElementById('rps').innerHTML = rps + '<span class="metric-unit">req/s</span>';
-        document.getElementById('throughput').innerHTML = throughput + '<span class="metric-unit">/s</span>';
+        document.getElementById('prefill-speed').innerHTML = (prefillSpeed !== '—' ? prefillSpeed + '<span class="metric-unit">tok/s</span>' : '—');
+        document.getElementById('decode-speed').innerHTML = (decodeSpeedVal !== '—' ? decodeSpeedVal + '<span class="metric-unit">tok/s</span>' : '—');
         document.getElementById('avg-ttft-table').textContent = avgTtft + 'ms';
+        document.getElementById('avg-decode-table').textContent = (avgDecode !== '—' ? avgDecode + 'ms' : '—');
         document.getElementById('avg-latency-table').textContent = avgLatency + 'ms';
+
+        // ── Evaluation Summary ──
+        (function() {
+            const ttftMs = report.avg_ttft_ms || 0;
+            const decodeSpeed = report.decode_speed || 0;
+            const tokenThroughput = report.token_throughput || 0;
+            const sr = report.success_rate || 0;
+            const failCount = report.failure || 0;
+
+            // Use decode_speed if available, otherwise token_throughput
+            const speedVal = decodeSpeed > 0 ? decodeSpeed : tokenThroughput;
+
+            // Evaluation criteria
+            const criteria = [
+                {
+                    name: 'TTFT (首字延迟)',
+                    value: ttftMs,
+                    fmt: ttftMs.toFixed(0) + ' ms',
+                    excellent: v => v > 0 && v < 1000,
+                    pass: v => v > 0 && v < 5000,
+                    thresholdText: '优: < 1000ms | 及格: < 5000ms',
+                    ref: '参考: DeepSeek V3 ~4700ms'
+                },
+                {
+                    name: '推理吞吐量 (Speed)',
+                    value: speedVal,
+                    fmt: speedVal > 0 ? speedVal.toFixed(1) + ' tok/s' : '—',
+                    excellent: v => v > 40,
+                    pass: v => v > 20,
+                    thresholdText: '优: > 40 tok/s | 及格: > 20 tok/s',
+                    ref: '参考: DeepSeek V3 ~23 tok/s'
+                },
+                {
+                    name: '成功率 (Success Rate)',
+                    value: sr * 100,
+                    fmt: (sr * 100).toFixed(2) + '%',
+                    excellent: v => v >= 100,
+                    pass: v => v >= 95,
+                    thresholdText: '优: 100% | 及格: > 95%',
+                    ref: '失败数: ' + failCount
+                },
+                {
+                    name: '稳定性 (P99/P50 比)',
+                    value: (function() {
+                        const p99 = report.p99_latency_ms || 0;
+                        const p50 = report.p50_latency_ms || 1;
+                        return p50 > 0 ? p99 / p50 : 0;
+                    })(),
+                    fmt: (function() {
+                        const p99 = report.p99_latency_ms || 0;
+                        const p50 = report.p50_latency_ms || 1;
+                        return p50 > 0 ? (p99 / p50).toFixed(2) + 'x' : '—';
+                    })(),
+                    excellent: v => v > 0 && v < 2.0,
+                    pass: v => v > 0 && v < 5.0,
+                    thresholdText: '优: < 2.0x | 及格: < 5.0x',
+                    ref: 'P99=' + (report.p99_latency_ms||0) + 'ms / P50=' + (report.p50_latency_ms||0) + 'ms'
+                }
+            ];
+
+            // Evaluate each
+            let excellentCount = 0;
+            let passCount = 0;
+            let failCount2 = 0;
+            const items = criteria.map(c => {
+                let level, label;
+                if (c.value === 0 || c.fmt === '—') {
+                    level = 'pass'; label = 'N/A';
+                } else if (c.excellent(c.value)) {
+                    level = 'excellent'; label = '优秀'; excellentCount++;
+                } else if (c.pass(c.value)) {
+                    level = 'pass'; label = '及格'; passCount++;
+                } else {
+                    level = 'fail'; label = '不达标'; failCount2++;
+                }
+                return `
+                    <div class="eval-item ${level}">
+                        <div class="eval-item-header">
+                            <span class="eval-item-name">${c.name}</span>
+                            <span class="eval-item-badge ${level}">${label}</span>
+                        </div>
+                        <div class="eval-item-value">${c.fmt}</div>
+                        <div class="eval-item-threshold">
+                            <strong>${c.thresholdText}</strong><br>${c.ref}
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('eval-grid').innerHTML = items.join('');
+
+            // Overall grade
+            let overallGrade, gradeClass, verdictText;
+            if (failCount2 === 0 && excellentCount >= 3) {
+                overallGrade = 'A';
+                gradeClass = 'grade-excellent';
+                verdictText = `模型综合表现优秀，${excellentCount} 项指标达到推荐标准。各维度性能满足生产部署要求，可以放心使用。`;
+            } else if (failCount2 === 0) {
+                overallGrade = 'B';
+                gradeClass = 'grade-pass';
+                verdictText = `模型综合表现合格，${excellentCount} 项优秀、${passCount} 项及格。基本满足生产使用需求，部分指标有优化空间。`;
+            } else if (failCount2 <= 1) {
+                overallGrade = 'C';
+                gradeClass = 'grade-pass';
+                verdictText = `模型有 ${failCount2} 项指标未达到最低门槛，需要关注。建议优化不达标项后再上线使用。`;
+            } else {
+                overallGrade = 'D';
+                gradeClass = 'grade-fail';
+                verdictText = `模型有 ${failCount2} 项指标不达标，不建议直接用于生产环境。需进行针对性优化或考虑更换模型。`;
+            }
+
+            document.getElementById('eval-overall').innerHTML =
+                `<span class="eval-grade ${gradeClass}">${overallGrade}</span>`;
+            document.getElementById('eval-verdict').innerHTML = verdictText;
+        })();
 
         // ECharts theme configuration
         const chartTheme = {
@@ -918,6 +1405,76 @@
             }],
             animationDuration: 1000,
             animationEasing: 'cubicOut'
+        });
+
+        // Decode Time Chart
+        const decodeChart = echarts.init(document.getElementById('decode-chart'));
+        const decodeHist = createHistogram(report.decode_distribution_ms || []);
+        decodeChart.setOption({
+            ...chartTheme,
+            grid: { left: 50, right: 24, top: 24, bottom: 50 },
+            tooltip: {
+                ...chartTheme.tooltip,
+                trigger: 'axis',
+                formatter: function (params) {
+                    const idx = params[0].dataIndex;
+                    const count = params[0].value;
+                    const edge = decodeHist.binEdges[idx];
+                    const nextEdge = idx + 1 < decodeHist.binEdges.length
+                        ? decodeHist.binEdges[idx + 1]
+                        : edge + (decodeHist.binEdges[1] - decodeHist.binEdges[0]);
+                    return `<div style="font-family: 'Plus Jakarta Sans', sans-serif;">
+                        <div style="font-weight: 600; margin-bottom: 4px;">Decode Time Range</div>
+                        <div style="color: #9ca3af;">${edge.toFixed(0)} - ${nextEdge.toFixed(0)} ms</div>
+                        <div style="color: #10b981; font-weight: 600; margin-top: 4px;">${count} requests</div>
+                    </div>`;
+                }
+            },
+            xAxis: {
+                type: 'category',
+                data: decodeHist.bins,
+                axisLabel: {
+                    color: '#6b7280',
+                    fontSize: 10,
+                    interval: Math.floor(decodeHist.bins.length / 6) || 0
+                },
+                axisLine: { lineStyle: { color: '#374151' } },
+                axisTick: { show: false },
+                name: 'Decode (ms)',
+                nameLocation: 'middle',
+                nameGap: 35,
+                nameTextStyle: { color: '#9ca3af', fontSize: 11 }
+            },
+            yAxis: {
+                type: 'value',
+                axisLabel: { color: '#6b7280', fontSize: 10 },
+                splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                axisLine: { show: false },
+                axisTick: { show: false }
+            },
+            series: [{
+                data: decodeHist.counts,
+                type: 'bar',
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#34d399' },
+                        { offset: 1, color: '#10b981' }
+                    ]),
+                    borderRadius: [4, 4, 0, 0]
+                },
+                barWidth: '70%',
+                emphasis: {
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#6ee7b7' },
+                            { offset: 1, color: '#34d399' }
+                        ])
+                    }
+                }
+            }],
+            animationDuration: 1000,
+            animationEasing: 'cubicOut',
+            animationDelay: 100
         });
 
         // Latency Chart
@@ -1082,9 +1639,152 @@
         // Resize charts on window resize
         window.addEventListener('resize', () => {
             ttftChart.resize();
+            decodeChart.resize();
             latencyChart.resize();
             successChart.resize();
         });
+
+        // Bottleneck Analysis
+        (function() {
+            const grid = document.getElementById('analysis-grid');
+            const avgTTFT = report.avg_ttft_ms || 0;
+            const avgDecodeTime = report.avg_decode_ms || 0;
+            const avgTotal = report.avg_latency_ms || 0;
+            const pSpeed = report.prefill_speed || 0;
+            const dSpeed = report.decode_speed || 0;
+
+            // Time breakdown
+            const prefillPct = avgTotal > 0 ? (avgTTFT / avgTotal * 100) : 0;
+            const decodePct = avgTotal > 0 ? (avgDecodeTime / avgTotal * 100) : 0;
+
+            let items = [];
+
+            // 1. Time Breakdown Card
+            items.push(`
+                <div class="analysis-item">
+                    <div class="analysis-item-header">
+                        <h4>Time Breakdown</h4>
+                    </div>
+                    <p>Prefill (TTFT) accounts for <strong style="color: var(--accent-primary);">${prefillPct.toFixed(1)}%</strong> of total latency,
+                       Decode accounts for <strong style="color: var(--accent-tertiary);">${decodePct.toFixed(1)}%</strong>.</p>
+                    <div class="analysis-ratio">
+                        <span class="ratio-label">Prefill ${prefillPct.toFixed(0)}%</span>
+                        <div class="ratio-bar">
+                            <div class="ratio-fill" style="width: ${prefillPct}%; background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));"></div>
+                        </div>
+                    </div>
+                    <div class="analysis-ratio">
+                        <span class="ratio-label">Decode ${decodePct.toFixed(0)}%</span>
+                        <div class="ratio-bar">
+                            <div class="ratio-fill" style="width: ${decodePct}%; background: linear-gradient(90deg, var(--accent-secondary), var(--accent-tertiary));"></div>
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            // 2. Bottleneck Diagnosis
+            let bottleneck = '';
+            let badgeClass = '';
+            let diagnosis = '';
+            let suggestions = '';
+
+            if (prefillPct > 60) {
+                bottleneck = 'Prefill Bound (Compute)';
+                badgeClass = 'badge-compute';
+                diagnosis = 'Prefill phase dominates total latency. This is typically compute-bound — the GPU is busy computing attention over the full input context.';
+                suggestions = `
+                    <p style="margin-top: 0.5rem; font-size: 0.78rem;"><strong style="color: var(--text-primary);">Optimization suggestions:</strong></p>
+                    <p style="font-size: 0.78rem;">
+                        ▸ Use Flash Attention / PagedAttention to reduce memory overhead<br>
+                        ▸ Enable prefix caching if prompts share common prefixes<br>
+                        ▸ Reduce prompt length where possible<br>
+                        ▸ Use a GPU with higher FLOPS (e.g., H100 vs A100)<br>
+                        ▸ Enable tensor parallelism for long-context scenarios
+                    </p>
+                `;
+            } else if (decodePct > 60) {
+                bottleneck = 'Decode Bound (Memory BW)';
+                badgeClass = 'badge-memory';
+                diagnosis = 'Decode phase dominates total latency. This is typically memory-bandwidth-bound — each token generation requires reading all model weights from GPU memory.';
+                suggestions = `
+                    <p style="margin-top: 0.5rem; font-size: 0.78rem;"><strong style="color: var(--text-primary);">Optimization suggestions:</strong></p>
+                    <p style="font-size: 0.78rem;">
+                        ▸ Use quantization (AWQ / GPTQ / W4A16 / W8A8) to reduce weight size<br>
+                        ▸ Increase batch size to amortize memory reads (continuous batching)<br>
+                        ▸ Choose GPU with higher HBM bandwidth (H100: 3.35TB/s vs A100: 2TB/s)<br>
+                        ▸ Use speculative decoding (draft model) to increase parallelism<br>
+                        ▸ Try MoE models (e.g., Qwen3-30B-A3B) to reduce active params
+                    </p>
+                `;
+            } else {
+                bottleneck = 'Balanced';
+                badgeClass = 'badge-balanced';
+                diagnosis = 'Neither phase strongly dominates. The model is reasonably balanced between prefill and decode. Both phases contribute similar proportions to total latency.';
+                suggestions = `
+                    <p style="margin-top: 0.5rem; font-size: 0.78rem;"><strong style="color: var(--text-primary);">Optimization suggestions:</strong></p>
+                    <p style="font-size: 0.78rem;">
+                        ▸ Apply quantization to improve decode throughput<br>
+                        ▸ Enable prefix caching + continuous batching<br>
+                        ▸ Profile GPU utilization to find specific hotspots<br>
+                        ▸ Consider chunked prefill to balance scheduling
+                    </p>
+                `;
+            }
+
+            items.push(`
+                <div class="analysis-item">
+                    <div class="analysis-item-header">
+                        <span class="analysis-badge ${badgeClass}">${bottleneck}</span>
+                    </div>
+                    <p>${diagnosis}</p>
+                    ${suggestions}
+                </div>
+            `);
+
+            // 3. Roofline Model Guidance
+            items.push(`
+                <div class="analysis-item">
+                    <div class="analysis-item-header">
+                        <h4>Roofline Model Reference</h4>
+                    </div>
+                    <p style="font-size: 0.78rem;">
+                        The <strong>Roofline Model</strong> helps determine whether a workload is <em>compute-bound</em> or <em>memory-bandwidth-bound</em>:
+                    </p>
+                    <p style="font-size: 0.78rem; margin-top: 0.5rem;">
+                        <strong style="color: var(--accent-primary);">Prefill (parallel):</strong> High arithmetic intensity → typically compute-bound on GPU FLOPS<br>
+                        <strong style="color: var(--accent-tertiary);">Decode (sequential):</strong> Low arithmetic intensity (batch=1) → typically memory-bandwidth-bound
+                    </p>
+                    <p style="font-size: 0.78rem; margin-top: 0.5rem;">
+                        <strong>Key metric:</strong> Arithmetic Intensity = FLOPs / Bytes-accessed<br>
+                        If AI &lt; machine's ops:byte ratio → memory-bound; otherwise → compute-bound.
+                    </p>
+                </div>
+            `);
+
+            // 4. Speed Reference
+            if (pSpeed > 0 || dSpeed > 0) {
+                items.push(`
+                    <div class="analysis-item">
+                        <div class="analysis-item-header">
+                            <h4>Speed Summary</h4>
+                        </div>
+                        <p style="font-size: 0.78rem;">
+                            ${pSpeed > 0 ? `<strong>Prefill Speed:</strong> ${pSpeed.toFixed(1)} tokens/s — measures how fast the model processes the input prompt<br>` : ''}
+                            ${dSpeed > 0 ? `<strong>Decode Speed:</strong> ${dSpeed.toFixed(1)} tokens/s — measures how fast new tokens are generated<br>` : ''}
+                            ${(pSpeed > 0 && dSpeed > 0) ? `<strong>Prefill / Decode Ratio:</strong> ${(pSpeed / dSpeed).toFixed(1)}x — values &gt;10x are typical for batch=1 serving` : ''}
+                        </p>
+                        <p style="font-size: 0.78rem; margin-top: 0.5rem;">
+                            <strong>Typical Reference Ranges (INT4, batch=1):</strong><br>
+                            ▸ 7B model: Prefill ~5000-8000 tok/s, Decode ~80-150 tok/s<br>
+                            ▸ 30B model: Prefill ~2000-4000 tok/s, Decode ~30-60 tok/s<br>
+                            ▸ 70B model: Prefill ~1000-2000 tok/s, Decode ~15-30 tok/s
+                        </p>
+                    </div>
+                `);
+            }
+
+            grid.innerHTML = items.join('');
+        })();
     </script>
 </body>
 

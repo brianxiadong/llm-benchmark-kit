@@ -27,7 +27,9 @@ func (r *Runner) generateReport(results []result.RequestResult, wallTime time.Du
 	var successResults []result.RequestResult
 	var ttfts []time.Duration
 	var latencies []time.Duration
+	var decodes []time.Duration
 	var totalTokens int
+	var totalInTokens int
 	var totalChars int
 	errorCounts := make(map[string]int)
 
@@ -37,7 +39,11 @@ func (r *Runner) generateReport(results []result.RequestResult, wallTime time.Du
 			successResults = append(successResults, res)
 			ttfts = append(ttfts, res.TTFT)
 			latencies = append(latencies, res.Latency)
+			if res.Decode > 0 {
+				decodes = append(decodes, res.Decode)
+			}
 			totalTokens += res.OutTokens
+			totalInTokens += res.InTokens
 			totalChars += res.OutChars
 
 			// Capture first sample
@@ -79,9 +85,43 @@ func (r *Runner) generateReport(results []result.RequestResult, wallTime time.Du
 		report.P95LatencyMs = stats.PercentileMs(latencies, 95)
 		report.P99LatencyMs = stats.PercentileMs(latencies, 99)
 
+		// Decode statistics
+		if len(decodes) > 0 {
+			report.AvgDecodeMs = stats.AverageMs(decodes)
+			report.P50DecodeMs = stats.PercentileMs(decodes, 50)
+			report.P95DecodeMs = stats.PercentileMs(decodes, 95)
+			report.P99DecodeMs = stats.PercentileMs(decodes, 99)
+			report.DecodeDistribution = stats.DurationsToMs(decodes)
+		}
+
 		// Distributions for visualization
 		report.TTFTDistribution = stats.DurationsToMs(ttfts)
 		report.LatencyDistribution = stats.DurationsToMs(latencies)
+
+		// Prefill speed: input_tokens / avg_TTFT
+		if totalInTokens > 0 && report.AvgTTFTMs > 0 {
+			avgInTokens := float64(totalInTokens) / float64(report.Success)
+			report.PrefillSpeed = avgInTokens / (report.AvgTTFTMs / 1000.0)
+		}
+
+		// Decode speed: output_tokens / avg_decode_time
+		if report.AvgDecodeMs > 0 {
+			switch r.cfg.TokenMode {
+			case "usage":
+				if totalTokens > 0 {
+					avgOutTokens := float64(totalTokens) / float64(report.Success)
+					report.DecodeSpeed = avgOutTokens / (report.AvgDecodeMs / 1000.0)
+				} else if totalChars > 0 {
+					avgOutChars := float64(totalChars) / float64(report.Success)
+					report.DecodeSpeed = avgOutChars / (report.AvgDecodeMs / 1000.0)
+				}
+			case "chars":
+				if totalChars > 0 {
+					avgOutChars := float64(totalChars) / float64(report.Success)
+					report.DecodeSpeed = avgOutChars / (report.AvgDecodeMs / 1000.0)
+				}
+			}
+		}
 	}
 
 	// Calculate throughput
@@ -157,6 +197,7 @@ func (r *Runner) writeOutput(results []result.RequestResult, report *result.Benc
 			"ttft_ms":          res.TTFT.Milliseconds(),
 			"latency_ms":       res.Latency.Milliseconds(),
 			"decode_ms":        res.Decode.Milliseconds(),
+			"in_tokens":        res.InTokens,
 			"out_tokens":       res.OutTokens,
 			"out_chars":        res.OutChars,
 			"start_ts":         res.StartTime.Format(time.RFC3339Nano),

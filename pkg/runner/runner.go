@@ -213,6 +213,7 @@ func (r *Runner) executeRequest(input workload.WorkloadInput) result.RequestResu
 
 	res.OutChars = len(totalContent)
 	if usage != nil {
+		res.InTokens = usage.PromptTokens
 		res.OutTokens = usage.CompletionTokens
 	}
 

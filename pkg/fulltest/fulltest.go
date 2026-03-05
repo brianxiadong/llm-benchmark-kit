@@ -1800,6 +1800,7 @@ type SampleDataItem struct {
 type ChartData struct {
 	TTFTDistribution    []float64 `json:"ttftDistribution"`
 	LatencyDistribution []float64 `json:"latencyDistribution"`
+	DecodeDistribution  []float64 `json:"decodeDistribution"`
 	AllNames            []string  `json:"allNames"`
 	FirstCallData       []float64 `json:"firstCallData"`
 	ConcurrentData      []float64 `json:"concurrentData"`
@@ -1868,9 +1869,11 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 
 	// Get benchmark metrics
 	var rps, throughput, avgTTFT float64
+	var prefillSpeed, decodeSpeed, avgDecodeMs float64
 	var p50Latency, p95Latency, p99Latency int64
 	var p50TTFT, p95TTFT, p99TTFT int64
-	var ttftDistribution, latencyDistribution []float64
+	var p50Decode, p95Decode, p99Decode int64
+	var ttftDistribution, latencyDistribution, decodeDistribution []float64
 
 	if report.BenchmarkReport != nil {
 		rps = report.BenchmarkReport.RPS
@@ -1882,12 +1885,21 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		p50TTFT = report.BenchmarkReport.P50TTFTMs
 		p95TTFT = report.BenchmarkReport.P95TTFTMs
 		p99TTFT = report.BenchmarkReport.P99TTFTMs
+		prefillSpeed = report.BenchmarkReport.PrefillSpeed
+		decodeSpeed = report.BenchmarkReport.DecodeSpeed
+		avgDecodeMs = report.BenchmarkReport.AvgDecodeMs
+		p50Decode = report.BenchmarkReport.P50DecodeMs
+		p95Decode = report.BenchmarkReport.P95DecodeMs
+		p99Decode = report.BenchmarkReport.P99DecodeMs
 		// Convert int64 slices to float64 for chart data
 		for _, v := range report.BenchmarkReport.TTFTDistribution {
 			ttftDistribution = append(ttftDistribution, float64(v))
 		}
 		for _, v := range report.BenchmarkReport.LatencyDistribution {
 			latencyDistribution = append(latencyDistribution, float64(v))
+		}
+		for _, v := range report.BenchmarkReport.DecodeDistribution {
+			decodeDistribution = append(decodeDistribution, float64(v))
 		}
 	}
 
@@ -1948,6 +1960,7 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 	chartData := ChartData{
 		TTFTDistribution:    ttftDistribution,
 		LatencyDistribution: latencyDistribution,
+		DecodeDistribution:  decodeDistribution,
 	}
 
 	// Prepare bar chart data with proper alignment
@@ -2114,6 +2127,12 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 		"P99TTFT":               p99TTFT,
 		"RPS":                   rps,
 		"Throughput":            throughput,
+		"PrefillSpeed":          prefillSpeed,
+		"DecodeSpeed":           decodeSpeed,
+		"AvgDecodeMs":           avgDecodeMs,
+		"P50Decode":             p50Decode,
+		"P95Decode":             p95Decode,
+		"P99Decode":             p99Decode,
 		"FCSupported":           fcSupported,
 		"FCDetails":             fcDetails,
 		"SummaryStatus":         summaryStatus,

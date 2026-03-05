@@ -20,6 +20,7 @@ type RequestResult struct {
 	TTFT      time.Duration `json:"ttft_ns"`       // Time to first token
 	Latency   time.Duration `json:"latency_ns"`    // Total request latency
 	Decode    time.Duration `json:"decode_ns"`     // Decode time (end - first_content)
+	InTokens  int           `json:"in_tokens"`     // Input (prompt) token count
 	OutTokens int           `json:"out_tokens"`    // Output token count
 	OutChars  int           `json:"out_chars"`     // Output character count
 	Err       string        `json:"err,omitempty"` // Error message if failed
@@ -85,7 +86,18 @@ type BenchmarkReport struct {
 	// Error Breakdown
 	ErrorsTopN []ErrorStat `json:"errors_top_n,omitempty"`
 
+	// Decode Statistics (milliseconds)
+	AvgDecodeMs float64 `json:"avg_decode_ms"`
+	P50DecodeMs int64   `json:"p50_decode_ms"`
+	P95DecodeMs int64   `json:"p95_decode_ms"`
+	P99DecodeMs int64   `json:"p99_decode_ms"`
+
+	// Speed Metrics
+	PrefillSpeed float64 `json:"prefill_speed"` // tokens/s (input_tokens / TTFT)
+	DecodeSpeed  float64 `json:"decode_speed"`  // tokens/s (output_tokens / decode_time)
+
 	// Raw data for visualization
 	TTFTDistribution    []int64 `json:"ttft_distribution_ms,omitempty"`
 	LatencyDistribution []int64 `json:"latency_distribution_ms,omitempty"`
+	DecodeDistribution  []int64 `json:"decode_distribution_ms,omitempty"`
 }

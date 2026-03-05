@@ -608,6 +608,164 @@
                 box-shadow: 0 8px 48px var(--accent-glow), 0 0 0 8px rgba(99, 102, 241, 0.1);
             }
         }
+
+        /* Evaluation Summary Section */
+        .eval-summary {
+            margin-bottom: 2rem;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border-subtle);
+            border-radius: 20px;
+            padding: 1.5rem 2rem;
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.6s ease-out backwards;
+            animation-delay: 0.05s;
+        }
+
+        .eval-summary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--success), var(--warning), var(--error));
+            opacity: 0.8;
+        }
+
+        .eval-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .eval-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .eval-overall {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .eval-grade {
+            font-family: var(--font-mono);
+            font-size: 1.5rem;
+            font-weight: 800;
+            padding: 0.25rem 1rem;
+            border-radius: 10px;
+            letter-spacing: 0.05em;
+        }
+
+        .grade-excellent {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .grade-pass {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .grade-fail {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--error);
+            border: 1px solid rgba(244, 63, 94, 0.3);
+        }
+
+        .eval-verdict {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-bottom: 1.25rem;
+            padding: 0.75rem 1rem;
+            background: var(--bg-surface);
+            border-radius: 10px;
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .eval-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+        }
+
+        .eval-item {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 12px;
+            padding: 1rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .eval-item::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 3px;
+            height: 100%;
+        }
+
+        .eval-item.excellent::after { background: var(--success); }
+        .eval-item.pass::after { background: var(--warning); }
+        .eval-item.fail::after { background: var(--error); }
+
+        .eval-item-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .eval-item-name {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .eval-item-badge {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .eval-item-badge.excellent { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+        .eval-item-badge.pass { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
+        .eval-item-badge.fail { background: rgba(244, 63, 94, 0.15); color: var(--error); }
+
+        .eval-item-value {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+        }
+
+        .eval-item-threshold {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .eval-item-threshold strong {
+            color: var(--text-tertiary);
+        }
     </style>
 </head>
 
@@ -627,6 +785,21 @@
                 <span class="model-info-item"><span>耗时:</span> <strong>{{printf "%.2f" .DurationSeconds}} 秒</strong></span>
             </div>
         </header>
+
+        <!-- Evaluation Summary -->
+        <section class="eval-summary" id="eval-summary">
+            <div class="eval-header">
+                <h3 class="eval-title">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    模型评估总结
+                </h3>
+                <div class="eval-overall" id="eval-overall"></div>
+            </div>
+            <div class="eval-verdict" id="eval-verdict"></div>
+            <div class="eval-grid" id="eval-grid"></div>
+        </section>
 
         <section class="stats-grid">
             <div class="stat-card">
@@ -668,6 +841,14 @@
             <div class="stat-card">
                 <div class="stat-value">{{printf "%.1f" .Throughput}}</div>
                 <div class="stat-label">Token/s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value accent">{{if gt .PrefillSpeed 0.0}}{{printf "%.0f" .PrefillSpeed}}{{else}}—{{end}}</div>
+                <div class="stat-label">Prefill tok/s</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value accent">{{if gt .DecodeSpeed 0.0}}{{printf "%.1f" .DecodeSpeed}}{{else}}—{{end}}</div>
+                <div class="stat-label">Decode tok/s</div>
             </div>
             <div class="stat-card">
                 <div class="stat-value {{if .FCSupported}}success{{else}}error{{end}}">{{if .FCSupported}}✅ 支持{{else}}❌ 不支持{{end}}</div>
@@ -789,7 +970,7 @@
                 <div class="chart-card">
                     <div class="chart-header">
                         <span class="chart-title-icon"></span>
-                        <span class="chart-title">TTFT Distribution</span>
+                        <span class="chart-title">TTFT Distribution (Prefill)</span>
                     </div>
                     <div class="chart-container" id="ttft-chart"></div>
                     <div class="percentile-grid">
@@ -815,7 +996,35 @@
                 <div class="chart-card">
                     <div class="chart-header">
                         <span class="chart-title-icon"></span>
-                        <span class="chart-title">Latency Distribution</span>
+                        <span class="chart-title">Decode Time Distribution</span>
+                    </div>
+                    <div class="chart-container" id="decode-chart"></div>
+                    <div class="percentile-grid">
+                        <div class="percentile-item">
+                            <div class="percentile-label">Average</div>
+                            <div class="percentile-value">{{if gt .AvgDecodeMs 0.0}}{{printf "%.0f" .AvgDecodeMs}}ms{{else}}—{{end}}</div>
+                        </div>
+                        <div class="percentile-item p50">
+                            <div class="percentile-label">P50</div>
+                            <div class="percentile-value">{{.P50Decode}}ms</div>
+                        </div>
+                        <div class="percentile-item p95">
+                            <div class="percentile-label">P95</div>
+                            <div class="percentile-value">{{.P95Decode}}ms</div>
+                        </div>
+                        <div class="percentile-item p99">
+                            <div class="percentile-label">P99</div>
+                            <div class="percentile-value">{{.P99Decode}}ms</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-row">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <span class="chart-title-icon"></span>
+                        <span class="chart-title">Latency Distribution (E2E)</span>
                     </div>
                     <div class="chart-container" id="latency-chart"></div>
                     <div class="percentile-grid">
@@ -1041,6 +1250,165 @@
 
     <script>
         const chartData = {{.ChartDataJSON}};
+
+        // ── Evaluation Summary ──
+        (function() {
+            const ttftMs = {{.AvgTTFT}};
+            const throughput = {{.Throughput}};
+            const decodeSpeed = {{.DecodeSpeed}};
+            const sr = {{.SuccessRate}} / 100;
+            const failCount = {{.TotalTests}} - {{.TotalSuccess}};
+            const fcSupported = {{if .FCSupported}}true{{else}}false{{end}};
+            const p99Latency = {{.P99Latency}};
+            const p50Latency = {{.P50Latency}};
+
+            // Use decode speed if available, otherwise throughput
+            const speedVal = decodeSpeed > 0 ? decodeSpeed : throughput;
+
+            // Long context check
+            let maxContext = 0;
+            {{if .Report.LongContextResult}}
+            maxContext = {{.Report.LongContextResult.MaxSupported}};
+            {{end}}
+            const contextOk = maxContext >= 16000;
+
+            // Throughput degradation check for long context
+            let throughputDegradation = 0;
+            {{if .Report.LongContextResult}}
+            const lcResults = [
+                {{range .Report.LongContextResult.Results}}
+                { len: {{.ContextLength}}, tp: {{.Throughput}}, ok: {{if .Success}}true{{else}}false{{end}} },
+                {{end}}
+            ].filter(r => r.ok && r.tp > 0);
+            if (lcResults.length >= 2) {
+                const first = lcResults[0].tp;
+                const last = lcResults[lcResults.length - 1].tp;
+                throughputDegradation = first > 0 ? ((first - last) / first * 100) : 0;
+            }
+            {{end}}
+
+            // Graduated concurrency max successful concurrency
+            let maxConcurrency = 0;
+            {{if .Report.GraduatedConcurrency}}
+            {{range .Report.GraduatedConcurrency.Levels}}
+            if ({{.FailureCount}} === 0 && {{.Concurrency}} > maxConcurrency) maxConcurrency = {{.Concurrency}};
+            {{end}}
+            {{end}}
+
+            const criteria = [
+                {
+                    name: 'TTFT (首字延迟)',
+                    value: ttftMs,
+                    fmt: ttftMs.toFixed(0) + ' ms',
+                    excellent: v => v > 0 && v < 1000,
+                    pass: v => v > 0 && v < 5000,
+                    thresholdText: '优: < 1000ms | 及格: < 5000ms',
+                    ref: '参考: DeepSeek V3 ~4700ms'
+                },
+                {
+                    name: '推理吞吐量 (Speed)',
+                    value: speedVal,
+                    fmt: speedVal > 0 ? speedVal.toFixed(1) + ' tok/s' : '—',
+                    excellent: v => v > 40,
+                    pass: v => v > 20,
+                    thresholdText: '优: > 40 tok/s | 及格: > 20 tok/s',
+                    ref: '参考: DeepSeek V3 ~23 tok/s'
+                },
+                {
+                    name: '成功率 (Reliability)',
+                    value: sr * 100,
+                    fmt: (sr * 100).toFixed(2) + '%',
+                    excellent: v => v >= 100,
+                    pass: v => v >= 95,
+                    thresholdText: '优: 100% | 及格: > 95%',
+                    ref: '失败数: ' + failCount
+                },
+                {
+                    name: '并发支持 (Concurrency)',
+                    value: maxConcurrency,
+                    fmt: maxConcurrency > 0 ? maxConcurrency + ' 并发' : '—',
+                    excellent: v => v >= 5,
+                    pass: v => v >= 3,
+                    thresholdText: '优: ≥ 5 并发 | 及格: ≥ 3 并发',
+                    ref: '最大无报错并发级别'
+                },
+                {
+                    name: '长文本支持 (Context)',
+                    value: maxContext,
+                    fmt: maxContext > 0 ? (maxContext >= 1000 ? (maxContext/1000).toFixed(0) + 'K 字符' : maxContext + ' 字符') : '—',
+                    excellent: v => v >= 16000,
+                    pass: v => v >= 8000,
+                    thresholdText: '优: ≥ 16K 字符 | 及格: ≥ 8K 字符',
+                    ref: '约需支持1万-2万中文字'
+                },
+                {
+                    name: '长文吞吐衰减',
+                    value: throughputDegradation,
+                    fmt: throughputDegradation > 0 ? throughputDegradation.toFixed(1) + '%' : (throughputDegradation < 0 ? '无衰减 (+' + Math.abs(throughputDegradation).toFixed(1) + '%)' : '0%'),
+                    excellent: v => v < 20,
+                    pass: v => v < 40,
+                    thresholdText: '优: < 20% | 及格: < 40%',
+                    ref: '短→长文速度衰减比'
+                },
+                {
+                    name: 'Function Call',
+                    value: fcSupported ? 1 : 0,
+                    fmt: fcSupported ? '✅ 支持' : '❌ 不支持',
+                    excellent: v => v === 1,
+                    pass: v => false,
+                    thresholdText: '优: 支持 | 不及格: 不支持',
+                    ref: '标准 Tool Use 能力'
+                },
+                {
+                    name: '稳定性 (P99/P50)',
+                    value: (p50Latency > 0 ? p99Latency / p50Latency : 0),
+                    fmt: p50Latency > 0 ? (p99Latency / p50Latency).toFixed(2) + 'x' : '—',
+                    excellent: v => v > 0 && v < 2.0,
+                    pass: v => v > 0 && v < 5.0,
+                    thresholdText: '优: < 2.0x | 及格: < 5.0x',
+                    ref: 'P99=' + p99Latency + 'ms / P50=' + p50Latency + 'ms'
+                }
+            ];
+
+            let excellentCount = 0, passCount = 0, failCount2 = 0;
+            const items = criteria.map(c => {
+                let level, label;
+                if (c.fmt === '—') {
+                    level = 'pass'; label = 'N/A';
+                } else if (c.excellent(c.value)) {
+                    level = 'excellent'; label = '优秀'; excellentCount++;
+                } else if (c.pass(c.value)) {
+                    level = 'pass'; label = '及格'; passCount++;
+                } else {
+                    level = 'fail'; label = '不达标'; failCount2++;
+                }
+                return '<div class="eval-item ' + level + '">' +
+                    '<div class="eval-item-header"><span class="eval-item-name">' + c.name + '</span>' +
+                    '<span class="eval-item-badge ' + level + '">' + label + '</span></div>' +
+                    '<div class="eval-item-value">' + c.fmt + '</div>' +
+                    '<div class="eval-item-threshold"><strong>' + c.thresholdText + '</strong><br>' + c.ref + '</div></div>';
+            });
+            document.getElementById('eval-grid').innerHTML = items.join('');
+
+            let overallGrade, gradeClass, verdictText;
+            const evaluated = excellentCount + passCount + failCount2;
+            if (failCount2 === 0 && excellentCount >= Math.ceil(evaluated * 0.6)) {
+                overallGrade = 'A'; gradeClass = 'grade-excellent';
+                verdictText = '模型综合表现优秀，' + excellentCount + ' 项指标达到推荐标准。各维度性能满足生产部署要求，可以放心使用。';
+            } else if (failCount2 === 0) {
+                overallGrade = 'B'; gradeClass = 'grade-pass';
+                verdictText = '模型综合表现合格，' + excellentCount + ' 项优秀、' + passCount + ' 项及格。基本满足生产使用需求，部分指标有优化空间。';
+            } else if (failCount2 <= 2) {
+                overallGrade = 'C'; gradeClass = 'grade-pass';
+                verdictText = '模型有 ' + failCount2 + ' 项指标未达到最低门槛，需要关注。建议优化不达标项后再上线使用。';
+            } else {
+                overallGrade = 'D'; gradeClass = 'grade-fail';
+                verdictText = '模型有 ' + failCount2 + ' 项指标不达标，不建议直接用于生产环境。需进行针对性优化或考虑更换模型。';
+            }
+
+            document.getElementById('eval-overall').innerHTML = '<span class="eval-grade ' + gradeClass + '">' + overallGrade + '</span>';
+            document.getElementById('eval-verdict').innerHTML = verdictText;
+        })();
         
         // ECharts theme configuration
         const chartTheme = {
@@ -1129,6 +1497,54 @@
                 animationEasing: 'cubicOut'
             });
             window.addEventListener('resize', () => ttftChart.resize());
+        }
+
+        // Decode Distribution Chart
+        if (chartData.decodeDistribution && chartData.decodeDistribution.length > 0) {
+            const decodeChart = echarts.init(document.getElementById('decode-chart'));
+            const decodeHist = createHistogram(chartData.decodeDistribution);
+            decodeChart.setOption({
+                ...chartTheme,
+                grid: { left: 50, right: 24, top: 24, bottom: 50 },
+                tooltip: {
+                    ...chartTheme.tooltip,
+                    trigger: 'axis',
+                    formatter: function (params) {
+                        const count = params[0].value;
+                        return '<div style="font-family: Plus Jakarta Sans, sans-serif;"><div style="font-weight: 600;">Decode Time</div><div style="color: #10b981; font-weight: 600;">' + count + ' requests</div></div>';
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: decodeHist.bins,
+                    axisLabel: { color: '#6b7280', fontSize: 10, interval: Math.floor(decodeHist.bins.length / 6) || 0 },
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    axisTick: { show: false },
+                    name: 'Decode (ms)', nameLocation: 'middle', nameGap: 35, nameTextStyle: { color: '#9ca3af', fontSize: 11 }
+                },
+                yAxis: {
+                    type: 'value',
+                    axisLabel: { color: '#6b7280', fontSize: 10 },
+                    splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                    axisLine: { show: false }, axisTick: { show: false }
+                },
+                series: [{
+                    data: decodeHist.counts,
+                    type: 'bar',
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#34d399' },
+                            { offset: 1, color: '#10b981' }
+                        ]),
+                        borderRadius: [4, 4, 0, 0]
+                    },
+                    barWidth: '70%'
+                }],
+                animationDuration: 1000,
+                animationEasing: 'cubicOut',
+                animationDelay: 100
+            });
+            window.addEventListener('resize', () => decodeChart.resize());
         }
 
         // Latency Distribution Chart
