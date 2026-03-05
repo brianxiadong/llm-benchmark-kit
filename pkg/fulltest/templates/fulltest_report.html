@@ -1262,8 +1262,8 @@
             const p99Latency = {{.P99Latency}};
             const p50Latency = {{.P50Latency}};
 
-            // Use decode speed if available, otherwise throughput
-            const speedVal = decodeSpeed > 0 ? decodeSpeed : throughput;
+            // Use throughput (end-to-end) for evaluation, not decode speed
+            const speedVal = throughput;
 
             // Long context check
             let maxContext = 0;

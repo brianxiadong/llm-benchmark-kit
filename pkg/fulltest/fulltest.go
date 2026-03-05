@@ -570,7 +570,7 @@ func (r *Runner) executeSingleRequest(name, prompt string) TestResult {
 			rawFrames = append(rawFrames, event.Raw)
 			r.writeLog("data: %s", event.Raw)
 		}
-		if event.Type == provider.EventContent {
+		if event.Type == provider.EventContent || event.Type == provider.EventReasoning {
 			responseContent.WriteString(event.Text)
 		}
 		if event.Type == provider.EventUsage && event.Usage != nil {
@@ -862,7 +862,7 @@ func (r *Runner) runSingleConcurrencyLevel(concurrency, totalRequests int, promp
 
 			var tokens int
 			for event := range events {
-				if event.Type == provider.EventContent && !gotFirstToken {
+				if (event.Type == provider.EventContent || event.Type == provider.EventReasoning) && !gotFirstToken {
 					firstTokenTime = time.Now()
 					gotFirstToken = true
 				}
@@ -1262,7 +1262,7 @@ func (r *Runner) executeLongContextRequest(contextLength int) LongContextTestRes
 	// Process stream events
 	var outputTokens int
 	for event := range events {
-		if event.Type == provider.EventContent && !gotFirstToken {
+		if (event.Type == provider.EventContent || event.Type == provider.EventReasoning) && !gotFirstToken {
 			firstTokenTime = time.Now()
 			gotFirstToken = true
 			r.writeLog("First token at: %.2f ms", float64(firstTokenTime.Sub(start).Milliseconds()))

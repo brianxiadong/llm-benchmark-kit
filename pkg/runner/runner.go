@@ -192,6 +192,15 @@ func (r *Runner) executeRequest(input workload.WorkloadInput) result.RequestResu
 
 			totalContent += event.Text
 
+		case provider.EventReasoning:
+			// Reasoning tokens also count for TTFT (first response from server)
+			if !gotFirstContent {
+				res.FirstContentTime = time.Now()
+				res.TTFT = res.FirstContentTime.Sub(res.StartTime)
+				gotFirstContent = true
+			}
+			totalContent += event.Text
+
 		case provider.EventUsage:
 			usage = event.Usage
 
