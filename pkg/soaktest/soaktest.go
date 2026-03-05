@@ -341,16 +341,28 @@ func (r *Runner) Run() (*SoakReport, error) {
 	remainingRecs := windowRecords
 	windowMu.Unlock()
 	if len(remainingRecs) > 0 {
-		metricsMu.Lock()
-		var latestMetrics *SystemMetrics
-		if len(metricsTimeline) > 0 {
-			m := metricsTimeline[len(metricsTimeline)-1]
-			latestMetrics = &m
+		// Check if there are any successful requests in the remainder
+		hasSuccess := false
+		for _, rec := range remainingRecs {
+			if rec.Success {
+				hasSuccess = true
+				break
+			}
 		}
-		metricsMu.Unlock()
+		if hasSuccess {
+			metricsMu.Lock()
+			var latestMetrics *SystemMetrics
+			if len(metricsTimeline) > 0 {
+				m := metricsTimeline[len(metricsTimeline)-1]
+				latestMetrics = &m
+			}
+			metricsMu.Unlock()
 
-		snap := ComputeSnapshot(len(report.Snapshots), report.StartTime, time.Now(), remainingRecs, latestMetrics)
-		report.Snapshots = append(report.Snapshots, snap)
+			snap := ComputeSnapshot(len(report.Snapshots), report.StartTime, time.Now(), remainingRecs, latestMetrics)
+			report.Snapshots = append(report.Snapshots, snap)
+		} else {
+			log.Printf("[Soak] Skipping final incomplete window: %d records all failed (test termination artifacts)", len(remainingRecs))
+		}
 	}
 
 	// Finalize report

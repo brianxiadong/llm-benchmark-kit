@@ -956,6 +956,45 @@
         </section>
         {{end}}
 
+        {{if .Report.LongContextConcurrentResult}}
+        <section class="section">
+            <div class="section-header">
+                <div class="section-icon">🔀</div>
+                <h2 class="section-title">Phase 3.5: 长上下文并发测试</h2>
+            </div>
+            <div class="phase-card">
+                <p style="color: var(--text-tertiary); margin-bottom: 1rem; font-size: 0.9rem;">
+                    使用不同内容的提示词，避免前缀缓存 (Prefix Caching) 干扰结果
+                </p>
+                <h3>测试结果详情</h3>
+                <table>
+                    <thead><tr><th>上下文长度</th><th>并发数</th><th>成功率</th><th>平均TTFT (ms)</th><th>P95 TTFT</th><th>平均延迟 (ms)</th><th>吞吐 (tok/s)</th><th>RPS</th></tr></thead>
+                    <tbody>
+                    {{range .Report.LongContextConcurrentResult.Levels}}
+                    <tr>
+                        <td>{{.ContextLength}} 字符</td>
+                        <td>{{.Concurrency}}</td>
+                        <td class="{{if eq .SuccessCount .TotalRequests}}success{{else}}error{{end}}">{{.SuccessCount}}/{{.TotalRequests}}</td>
+                        <td>{{printf "%.2f" .AvgTTFTMs}}</td>
+                        <td>{{printf "%.2f" .P95TTFTMs}}</td>
+                        <td>{{printf "%.2f" .AvgLatencyMs}}</td>
+                        <td>{{printf "%.2f" .Throughput}}</td>
+                        <td>{{printf "%.2f" .RPS}}</td>
+                    </tr>
+                    {{end}}
+                    </tbody>
+                </table>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <span class="chart-title-icon">📊</span>
+                    <span class="chart-title">长上下文并发: TTFT vs 并发数</span>
+                </div>
+                <div class="chart-container" id="long-context-concurrent-chart"></div>
+            </div>
+        </section>
+        {{end}}
+
         <section class="section">
             <div class="section-header">
                 <div class="section-icon">📝</div>
@@ -1403,6 +1442,75 @@
                 animationEasing: 'cubicOut'
             });
             window.addEventListener('resize', () => gcThroughputChart.resize());
+        }
+
+        // Long Context Concurrent Chart
+        if (chartData.longContextConcurrent && chartData.longContextConcurrent.labels) {
+            const lcc = chartData.longContextConcurrent;
+            const lccChart = echarts.init(document.getElementById('long-context-concurrent-chart'));
+            lccChart.setOption({
+                ...chartTheme,
+                grid: { left: 60, right: 60, top: 40, bottom: 60 },
+                legend: {
+                    data: ['平均 TTFT (ms)', 'P95 TTFT (ms)', '平均延迟 (ms)'],
+                    bottom: 10,
+                    textStyle: { color: '#9ca3af' }
+                },
+                tooltip: {
+                    ...chartTheme.tooltip,
+                    trigger: 'axis'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: lcc.labels || [],
+                    axisLabel: { color: '#6b7280', rotate: 20 },
+                    axisLine: { lineStyle: { color: '#374151' } },
+                    name: '上下文长度 x 并发数', nameLocation: 'middle', nameGap: 45
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '时间 (ms)',
+                    axisLabel: { color: '#6b7280' },
+                    splitLine: { lineStyle: { color: '#1f2937', type: 'dashed' } },
+                    nameTextStyle: { color: '#9ca3af' }
+                },
+                series: [
+                    {
+                        name: '平均 TTFT (ms)',
+                        type: 'bar',
+                        data: lcc.avgTTFT || [],
+                        itemStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: '#6366f1' },
+                                { offset: 1, color: '#4f46e5' }
+                            ]),
+                            borderRadius: [4, 4, 0, 0]
+                        },
+                        barWidth: '25%'
+                    },
+                    {
+                        name: 'P95 TTFT (ms)',
+                        type: 'line',
+                        data: lcc.p95TTFT || [],
+                        itemStyle: { color: '#f43f5e' },
+                        lineStyle: { width: 2, type: 'dashed' },
+                        symbol: 'diamond',
+                        symbolSize: 8
+                    },
+                    {
+                        name: '平均延迟 (ms)',
+                        type: 'line',
+                        data: lcc.avgLatency || [],
+                        itemStyle: { color: '#f59e0b' },
+                        lineStyle: { width: 3 },
+                        symbol: 'circle',
+                        symbolSize: 10
+                    }
+                ],
+                animationDuration: 1000,
+                animationEasing: 'cubicOut'
+            });
+            window.addEventListener('resize', () => lccChart.resize());
         }
     </script>
 </body>

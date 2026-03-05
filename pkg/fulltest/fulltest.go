@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -93,6 +94,26 @@ type LongContextResult struct {
 	AvgThroughput float64                 `json:"avg_throughput"`
 }
 
+// LongContextConcurrentLevelResult holds results for one context length at one concurrency level.
+type LongContextConcurrentLevelResult struct {
+	ContextLength int     `json:"context_length"`
+	Concurrency   int     `json:"concurrency"`
+	TotalRequests int     `json:"total_requests"`
+	SuccessCount  int     `json:"success_count"`
+	AvgTTFTMs     float64 `json:"avg_ttft_ms"`
+	P95TTFTMs     float64 `json:"p95_ttft_ms"`
+	AvgLatencyMs  float64 `json:"avg_latency_ms"`
+	P95LatencyMs  float64 `json:"p95_latency_ms"`
+	Throughput    float64 `json:"throughput"` // tokens/s sum
+	RPS           float64 `json:"rps"`
+	WallTimeMs    float64 `json:"wall_time_ms"`
+}
+
+// LongContextConcurrentResult holds the full concurrent long context test results.
+type LongContextConcurrentResult struct {
+	Levels []LongContextConcurrentLevelResult `json:"levels"`
+}
+
 // EnvironmentInfo holds system environment information.
 type EnvironmentInfo struct {
 	Hostname    string            `json:"hostname"`
@@ -157,6 +178,9 @@ type FullTestReport struct {
 
 	// Phase 3: Long Context Test
 	LongContextResult *LongContextResult `json:"long_context_result,omitempty"`
+
+	// Phase 3.5: Long Context Concurrent Test
+	LongContextConcurrentResult *LongContextConcurrentResult `json:"long_context_concurrent_result,omitempty"`
 
 	// Phase 4: Summary
 	SummaryMetrics *summarizer.SummaryMetrics `json:"summary_metrics,omitempty"`
@@ -328,6 +352,20 @@ func (r *Runner) Run() (*FullTestReport, error) {
 	r.printLongContextResult(report.LongContextResult)
 
 	fmt.Println("✅ Phase 3 Complete!")
+	fmt.Println()
+
+	// ===== Phase 3.5: Long Context Concurrent Test =====
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("📏 Phase 3.5: Long Context Concurrent Test")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println()
+	fmt.Println("Testing concurrent long context requests with varied prompts (defeats prefix caching)...")
+	fmt.Println()
+
+	report.LongContextConcurrentResult = r.runLongContextConcurrentTest()
+	r.printLongContextConcurrentResult(report.LongContextConcurrentResult)
+
+	fmt.Println("✅ Phase 3.5 Complete!")
 	fmt.Println()
 
 	// ===== Phase 4: Meeting Summary Test =====
@@ -1290,6 +1328,274 @@ func (r *Runner) printLongContextResult(result *LongContextResult) {
 		successCount, len(result.Results), result.MaxSupported, result.AvgTTFTMs, result.AvgThroughput)
 }
 
+func (r *Runner) printLongContextConcurrentResult(result *LongContextConcurrentResult) {
+	if result == nil {
+		fmt.Println("   ⚠️ 长上下文并发测试未完成")
+		return
+	}
+
+	fmt.Println("   Context(chars) | Concurrency | Success | Avg TTFT(ms) | Avg Latency(ms) | Throughput(tok/s) | P95 TTFT | RPS")
+	fmt.Println("   " + strings.Repeat("-", 120))
+
+	for _, level := range result.Levels {
+		fmt.Printf("   %15d | %11d | %3d/%-3d | %12.2f | %15.2f | %17.2f | %8.2f | %8.2f\n",
+			level.ContextLength, level.Concurrency, level.SuccessCount, level.TotalRequests,
+			level.AvgTTFTMs, level.AvgLatencyMs, level.Throughput,
+			level.P95TTFTMs, level.RPS)
+	}
+	fmt.Println()
+}
+
+// ========== Phase 3.5: Long Context Concurrent Test ==========
+
+// generateVariedLongContext generates a long context with unique ordering for each request.
+// This defeats vLLM prefix caching by ensuring each request has a different token sequence.
+func (r *Runner) generateVariedLongContext(targetChars int, requestIdx int) string {
+	// Different topic paragraphs - each ~200 chars
+	paragraphs := []string{
+		"人工智能技术的发展经历了多次浪潮。从早期的专家系统到现代的深度学习，每一次技术突破都带来了产业变革。自然语言处理、计算机视觉、语音识别等领域取得了显著进展。",
+		"云计算基础设施为企业数字化转型提供了强大支撑。公有云、私有云和混合云架构各有优势，企业需要根据业务特点选择合适的部署方案。容器化和微服务架构成为主流趋势。",
+		"区块链作为分布式账本技术，在金融、供应链、医疗等领域展现出巨大潜力。智能合约的引入使得去中心化应用成为可能，DeFi和NFT等新兴概念推动了Web3的发展。",
+		"网络安全威胁日益复杂，零信任架构成为企业安全建设的新范式。从边界安全到身份驱动的安全模型转变，要求组织重新审视访问控制、数据保护和威胁检测策略。",
+		"数据科学与大数据分析帮助企业从海量数据中提取价值。数据湖、数据仓库和实时流处理平台构成了现代数据基础设施。机器学习模型的训练和部署流程日益成熟。",
+		"物联网设备的普及连接了物理世界与数字世界。传感器网络、边缘计算和5G通信技术的融合，推动了智能制造、智慧城市和自动驾驶等应用场景的落地实践。",
+		"量子计算代表了计算能力的下一次飞跃。量子比特的叠加态和纠缠效应使其在密码学、材料模拟和优化问题上具有经典计算机无法比拟的优势。各国纷纷加大投入。",
+		"DevOps实践缩短了软件交付周期，持续集成和持续部署流水线提升了开发效率。基础设施即代码、监控告警和混沌工程等实践确保了系统的可靠性和可观测性。",
+		"边缘计算将数据处理能力从云端推向网络边缘，降低了延迟并节省了带宽。在工业互联网、视频分析和AR/VR等场景中发挥着重要作用，与云计算形成互补关系。",
+		"数字孪生技术通过创建物理实体的虚拟副本，实现了实时监控和预测性维护。在制造业、建筑和医疗领域的应用正在快速扩展，结合AI可以实现智能优化决策。",
+		"机器人流程自动化简化了企业重复性业务流程。结合自然语言处理和计算机视觉技术，智能RPA可以处理非结构化数据，扩展了自动化的应用边界和商业价值。",
+		"开源软件运动深刻改变了软件行业格局。从Linux内核到Kubernetes容器编排，从TensorFlow到PyTorch，开源项目成为技术创新的重要推动力。",
+	}
+
+	// Different question suffixes to make tail different too
+	questions := []string{
+		"请概括上述内容涉及的主要技术领域，不超过100字。",
+		"从上述内容中提取三个最重要的技术趋势，简要说明。",
+		"根据以上文本，分析技术发展的核心驱动力是什么？",
+		"请对上述内容按照技术成熟度进行分类，简要列出。",
+		"综合以上信息，哪些技术将在未来五年内产生最大影响？",
+		"请归纳上述各段落的共同主题，并用一句话总结。",
+		"从以上内容中找出与数据处理最相关的技术，并简要解释。",
+		"根据上述文本讨论的内容，企业数字化转型的核心挑战是什么？",
+	}
+
+	// Use requestIdx to create unique paragraph ordering
+	// Shuffle: start from different paragraph, rotate order
+	startIdx := requestIdx % len(paragraphs)
+	step := (requestIdx/len(paragraphs))%3 + 1 // 1, 2, or 3
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("以下是第%d份技术分析文档，请仔细阅读后回答问题：\n\n", requestIdx+1))
+
+	paraIdx := startIdx
+	blockNum := 0
+	for sb.Len() < targetChars {
+		blockNum++
+		sb.WriteString(fmt.Sprintf("[第%d节·文档%d]\n%s\n\n", blockNum, requestIdx+1, paragraphs[paraIdx%len(paragraphs)]))
+		paraIdx += step
+	}
+
+	result := sb.String()
+	if len(result) > targetChars {
+		result = result[:targetChars]
+	}
+
+	// Append a unique question
+	question := questions[requestIdx%len(questions)]
+	result += "\n\n" + question
+
+	return result
+}
+
+func (r *Runner) runLongContextConcurrentTest() *LongContextConcurrentResult {
+	result := &LongContextConcurrentResult{
+		Levels: make([]LongContextConcurrentLevelResult, 0),
+	}
+
+	// Test matrix: context lengths × concurrency levels
+	contextLengths := []int{4000, 8000, 16000}
+	concurrencyLevels := []int{2, 5, 10}
+	requestsMultiplier := 2 // requests = concurrency × multiplier
+
+	fmt.Printf("   上下文长度: %v | 并发级别: %v | 每级请求数: 并发×%d\n", contextLengths, concurrencyLevels, requestsMultiplier)
+	fmt.Println("   ⚠️  每个请求使用不同的段落顺序和问题，避免 prefix cache 影响")
+	fmt.Println()
+	fmt.Println("   ┌──────────┬────────┬──────────┬──────────────┬──────────────┬──────────────┬──────────────┬────────┬──────────┐")
+	fmt.Println("   │ 上下文   │ 并发   │ 成功/总数│ AvgTTFT(ms)  │ P95TTFT(ms)  │ AvgLatency   │ P95Latency   │ RPS    │ 耗时(ms) │")
+	fmt.Println("   ├──────────┼────────┼──────────┼──────────────┼──────────────┼──────────────┼──────────────┼────────┼──────────┤")
+
+	globalReqIdx := 0
+	for _, ctxLen := range contextLengths {
+		for _, conc := range concurrencyLevels {
+			totalReqs := conc * requestsMultiplier
+			if totalReqs < 6 {
+				totalReqs = 6
+			}
+			levelResult := r.runSingleLongContextConcurrentLevel(ctxLen, conc, totalReqs, &globalReqIdx)
+			result.Levels = append(result.Levels, levelResult)
+
+			fmt.Printf("   │ %6d字 │ %5d  │ %4d/%-4d│ %10.0f   │ %10.0f   │ %10.0f   │ %10.0f   │ %5.2f  │ %8.0f │\n",
+				levelResult.ContextLength, levelResult.Concurrency,
+				levelResult.SuccessCount, levelResult.TotalRequests,
+				levelResult.AvgTTFTMs, levelResult.P95TTFTMs,
+				levelResult.AvgLatencyMs, levelResult.P95LatencyMs,
+				levelResult.RPS, levelResult.WallTimeMs)
+		}
+	}
+
+	fmt.Println("   └──────────┴────────┴──────────┴──────────────┴──────────────┴──────────────┴──────────────┴────────┴──────────┘")
+	fmt.Println()
+
+	return result
+}
+
+func (r *Runner) runSingleLongContextConcurrentLevel(contextLength, concurrency, totalRequests int, globalReqIdx *int) LongContextConcurrentLevelResult {
+	levelResult := LongContextConcurrentLevelResult{
+		ContextLength: contextLength,
+		Concurrency:   concurrency,
+		TotalRequests: totalRequests,
+	}
+
+	type singleResult struct {
+		ttftMs    float64
+		latencyMs float64
+		tokens    int
+		success   bool
+	}
+
+	results := make([]singleResult, totalRequests)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, concurrency)
+
+	wallStart := time.Now()
+
+	for i := 0; i < totalRequests; i++ {
+		wg.Add(1)
+		reqIdx := *globalReqIdx
+		*globalReqIdx++
+
+		go func(idx, rIdx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Generate unique context for this request (defeats prefix caching)
+			context_ := r.generateVariedLongContext(contextLength, rIdx)
+
+			start := time.Now()
+			var firstTokenTime time.Time
+			gotFirstToken := false
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(r.cfg.TimeoutSec)*time.Second)
+			defer cancel()
+
+			input := workload.NewChatWorkload(
+				fmt.Sprintf("lcc_%d_c%d_%d", contextLength, concurrency, idx),
+				[]workload.ChatMessage{{Role: "user", Content: context_}},
+				256,
+			)
+
+			events, err := r.p.StreamChat(ctx, r.cfg, input)
+			if err != nil {
+				results[idx] = singleResult{
+					latencyMs: float64(time.Since(start).Milliseconds()),
+					success:   false,
+				}
+				return
+			}
+
+			var tokens int
+			for event := range events {
+				switch event.Type {
+				case provider.EventContent, provider.EventReasoning:
+					if !gotFirstToken {
+						firstTokenTime = time.Now()
+						gotFirstToken = true
+					}
+				case provider.EventUsage:
+					if event.Usage != nil {
+						tokens = event.Usage.CompletionTokens
+					}
+				case provider.EventError:
+					results[idx] = singleResult{
+						latencyMs: float64(time.Since(start).Milliseconds()),
+						success:   false,
+					}
+					return
+				}
+			}
+
+			latency := float64(time.Since(start).Milliseconds())
+			ttft := latency
+			if gotFirstToken {
+				ttft = float64(firstTokenTime.Sub(start).Milliseconds())
+			}
+
+			results[idx] = singleResult{
+				ttftMs:    ttft,
+				latencyMs: latency,
+				tokens:    tokens,
+				success:   gotFirstToken, // must have received at least one token
+			}
+		}(i, reqIdx)
+	}
+
+	wg.Wait()
+	wallTime := float64(time.Since(wallStart).Milliseconds())
+	levelResult.WallTimeMs = wallTime
+
+	// Aggregate results
+	var ttfts, latencies []float64
+	var totalTokens int
+	for _, res := range results {
+		if res.success {
+			levelResult.SuccessCount++
+			ttfts = append(ttfts, res.ttftMs)
+			latencies = append(latencies, res.latencyMs)
+			totalTokens += res.tokens
+		}
+	}
+
+	if len(ttfts) > 0 {
+		// Average
+		var sumTTFT, sumLatency float64
+		for _, v := range ttfts {
+			sumTTFT += v
+		}
+		for _, v := range latencies {
+			sumLatency += v
+		}
+		levelResult.AvgTTFTMs = sumTTFT / float64(len(ttfts))
+		levelResult.AvgLatencyMs = sumLatency / float64(len(latencies))
+
+		// P95 - sort and pick
+		sortFloat64s(ttfts)
+		sortFloat64s(latencies)
+		p95Idx := int(float64(len(ttfts)) * 0.95)
+		if p95Idx >= len(ttfts) {
+			p95Idx = len(ttfts) - 1
+		}
+		levelResult.P95TTFTMs = ttfts[p95Idx]
+		p95LatIdx := int(float64(len(latencies)) * 0.95)
+		if p95LatIdx >= len(latencies) {
+			p95LatIdx = len(latencies) - 1
+		}
+		levelResult.P95LatencyMs = latencies[p95LatIdx]
+	}
+
+	if wallTime > 0 {
+		levelResult.RPS = float64(levelResult.SuccessCount) / (wallTime / 1000.0)
+		levelResult.Throughput = float64(totalTokens) / (wallTime / 1000.0)
+	}
+
+	return levelResult
+}
+
+// sortFloat64s sorts a slice of float64 in ascending order.
+func sortFloat64s(a []float64) {
+	sort.Float64s(a)
+}
+
 // ========== Phase 4: Summary Test ==========
 
 func (r *Runner) runSummary(outputDir string) (string, *summarizer.SummaryMetrics, error) {
@@ -1423,6 +1729,22 @@ func (r *Runner) generateFinalReport(report *FullTestReport) error {
 		sb.WriteString("⚠️ 长上下文测试未完成\n\n")
 	}
 
+	// Phase 3.5: Long Context Concurrent Results
+	sb.WriteString("## Phase 3.5: 长上下文并发测试\n\n")
+	sb.WriteString("*使用不同内容的提示词，避免前缀缓存 (Prefix Caching) 干扰结果*\n\n")
+	if report.LongContextConcurrentResult != nil && len(report.LongContextConcurrentResult.Levels) > 0 {
+		sb.WriteString("| 上下文长度 | 并发数 | 成功率 | 平均TTFT (ms) | P95 TTFT | 平均延迟 (ms) | 吞吐 (tok/s) | RPS |\n")
+		sb.WriteString("|------------|--------|--------|---------------|----------|---------------|--------------|------|\n")
+		for _, level := range report.LongContextConcurrentResult.Levels {
+			sb.WriteString(fmt.Sprintf("| %d 字符 | %d | %d/%d | %.2f | %.2f | %.2f | %.2f | %.2f |\n",
+				level.ContextLength, level.Concurrency, level.SuccessCount, level.TotalRequests,
+				level.AvgTTFTMs, level.P95TTFTMs, level.AvgLatencyMs, level.Throughput, level.RPS))
+		}
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("⚠️ 长上下文并发测试未完成\n\n")
+	}
+
 	// Phase 4: Summary Results
 	sb.WriteString("## Phase 4: 会议纪要测试\n\n")
 	if report.SummaryOutputDir != "" {
@@ -1488,6 +1810,13 @@ type ChartData struct {
 		Latency    []float64 `json:"latency"`
 		Throughput []float64 `json:"throughput"`
 	} `json:"longContext,omitempty"`
+	LongContextConcurrent *struct {
+		Labels     []string  `json:"labels"`
+		AvgTTFT    []float64 `json:"avgTTFT"`
+		P95TTFT    []float64 `json:"p95TTFT"`
+		AvgLatency []float64 `json:"avgLatency"`
+		RPS        []float64 `json:"rps"`
+	} `json:"longContextConcurrent,omitempty"`
 	GraduatedConcurrency *struct {
 		Labels     []string  `json:"labels"`
 		AvgLatency []float64 `json:"avgLatency"`
@@ -1704,6 +2033,25 @@ func (r *Runner) generateHTMLReport(report *FullTestReport, outputPath string) e
 			chartData.GraduatedConcurrency.Throughput = append(chartData.GraduatedConcurrency.Throughput, lv.Throughput)
 			chartData.GraduatedConcurrency.RPS = append(chartData.GraduatedConcurrency.RPS, lv.RPS)
 			chartData.GraduatedConcurrency.AvgTTFT = append(chartData.GraduatedConcurrency.AvgTTFT, lv.AvgTTFTMs)
+		}
+	}
+
+	// Long context concurrent chart data
+	if report.LongContextConcurrentResult != nil && len(report.LongContextConcurrentResult.Levels) > 0 {
+		chartData.LongContextConcurrent = &struct {
+			Labels     []string  `json:"labels"`
+			AvgTTFT    []float64 `json:"avgTTFT"`
+			P95TTFT    []float64 `json:"p95TTFT"`
+			AvgLatency []float64 `json:"avgLatency"`
+			RPS        []float64 `json:"rps"`
+		}{}
+		for _, lv := range report.LongContextConcurrentResult.Levels {
+			label := fmt.Sprintf("%dK×C%d", lv.ContextLength/1000, lv.Concurrency)
+			chartData.LongContextConcurrent.Labels = append(chartData.LongContextConcurrent.Labels, label)
+			chartData.LongContextConcurrent.AvgTTFT = append(chartData.LongContextConcurrent.AvgTTFT, lv.AvgTTFTMs)
+			chartData.LongContextConcurrent.P95TTFT = append(chartData.LongContextConcurrent.P95TTFT, lv.P95TTFTMs)
+			chartData.LongContextConcurrent.AvgLatency = append(chartData.LongContextConcurrent.AvgLatency, lv.AvgLatencyMs)
+			chartData.LongContextConcurrent.RPS = append(chartData.LongContextConcurrent.RPS, lv.RPS)
 		}
 	}
 

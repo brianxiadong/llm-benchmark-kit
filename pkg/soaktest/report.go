@@ -161,6 +161,38 @@ func RebuildReportFromDir(inputDir, outputDir string) (*SoakReport, error) {
 		}
 	}
 
+	// Filter out incomplete final snapshot (test termination artifacts)
+	// When the test stops, in-flight requests get context deadline exceeded errors,
+	// creating a final snapshot with 0% success rate and zero metrics.
+	if len(report.Snapshots) > 1 {
+		last := report.Snapshots[len(report.Snapshots)-1]
+		if last.Success == 0 && last.Failure > 0 {
+			log.Printf("Filtering out incomplete final snapshot (window %d): %d failures, 0 successes",
+				last.WindowIndex, last.Failure)
+			report.Snapshots = report.Snapshots[:len(report.Snapshots)-1]
+			report.TotalRequests -= last.TotalRequests
+			report.TotalFailure -= last.Failure
+			if report.TotalRequests > 0 {
+				report.SuccessRate = float64(report.TotalSuccess) / float64(report.TotalRequests)
+			}
+			// Update end time to the last valid snapshot's end time
+			if len(report.Snapshots) > 0 {
+				report.EndTime = report.Snapshots[len(report.Snapshots)-1].EndTime
+				report.DurationSec = int(report.EndTime.Sub(report.StartTime).Seconds())
+				if report.DurationSec > 0 {
+					report.OverallRPS = float64(report.TotalRequests) / float64(report.DurationSec)
+				}
+			}
+			// Remove the termination errors from ErrorCounts
+			for errKey, cnt := range last.ErrorCounts {
+				report.ErrorCounts[errKey] -= cnt
+				if report.ErrorCounts[errKey] <= 0 {
+					delete(report.ErrorCounts, errKey)
+				}
+			}
+		}
+	}
+
 	// Write report JSON
 	reportJSON, _ := json.MarshalIndent(report, "", "  ")
 	outReportPath := filepath.Join(outputDir, "soak_report.json")

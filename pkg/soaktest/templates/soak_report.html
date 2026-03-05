@@ -238,39 +238,60 @@
             </div>
         </div>
 
-        <!-- Charts Row 2: RPS & Success Rate -->
+        <!-- Charts Row 2: RPS & Token Throughput -->
         <div class="chart-row">
             <div class="card">
                 <h2>🚀 RPS Trend</h2>
                 <div class="chart-container" id="chart-rps"></div>
             </div>
             <div class="card">
+                <h2>📊 Token Throughput Trend</h2>
+                <div class="chart-container" id="chart-throughput"></div>
+            </div>
+        </div>
+
+        <!-- Charts Row 3: Success Rate & Error Trend -->
+        <div class="chart-row">
+            <div class="card">
                 <h2>✅ Success Rate Trend</h2>
                 <div class="chart-container" id="chart-success"></div>
             </div>
-        </div>
-
-        <!-- Charts Row 3: System Metrics -->
-        <div class="chart-row">
             <div class="card">
-                <h2>💻 CPU & Memory</h2>
-                <div class="chart-container" id="chart-cpu-mem"></div>
-            </div>
-            <div class="card">
-                <h2>🎮 GPU Utilization & Memory</h2>
-                <div class="chart-container" id="chart-gpu"></div>
+                <h2>⚠️ Failure Count per Window</h2>
+                <div class="chart-container" id="chart-errors-trend"></div>
             </div>
         </div>
 
-        <!-- GPU Temperature & Power -->
+        <!-- Charts Row 4: System Metrics (CPU/Memory) -->
         <div class="chart-row">
             <div class="card">
-                <h2>🌡️ GPU Temperature</h2>
-                <div class="chart-container" id="chart-gpu-temp"></div>
+                <h2>💻 CPU Usage</h2>
+                <div class="chart-container" id="chart-cpu"></div>
             </div>
             <div class="card">
-                <h2>⚡ GPU Power</h2>
-                <div class="chart-container" id="chart-gpu-power"></div>
+                <h2>🧠 Memory Usage</h2>
+                <div class="chart-container" id="chart-mem"></div>
+            </div>
+        </div>
+
+        <!-- Charts Row 5: GPU (hidden entirely if no GPU data) -->
+        <div id="gpu-section">
+            <div class="chart-row">
+                <div class="card">
+                    <h2>🎮 GPU Utilization & Memory</h2>
+                    <div class="chart-container" id="chart-gpu"></div>
+                </div>
+                <div class="card">
+                    <h2>🌡️ GPU Temperature</h2>
+                    <div class="chart-container" id="chart-gpu-temp"></div>
+                </div>
+            </div>
+            <div class="chart-row" style="margin-top: 0;">
+                <div class="card">
+                    <h2>⚡ GPU Power</h2>
+                    <div class="chart-container" id="chart-gpu-power"></div>
+                </div>
+                <div class="card" style="visibility: hidden;"></div>
             </div>
         </div>
 
@@ -281,7 +302,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>#</th>
+                            <th>Time</th>
                             <th>Requests</th>
                             <th>Success%</th>
                             <th>Avg TTFT</th>
@@ -315,10 +336,10 @@
         const metricsTimeline = {{.MetricsTimelineJSON}};
         const errorCounts = {{.ErrorCountsJSON}};
         const report = {
-            successRate: {{printf "%.4f" .Report.SuccessRate}},
-            overallRPS: {{printf "%.2f" .Report.OverallRPS}},
-            avgTTFTMs: {{printf "%.2f" .Report.AvgTTFTMs}},
-            avgLatencyMs: {{printf "%.2f" .Report.AvgLatencyMs}}
+            successRate: parseFloat({{printf "%.4f" .Report.SuccessRate}}),
+            overallRPS: parseFloat({{printf "%.2f" .Report.OverallRPS}}),
+            avgTTFTMs: parseFloat({{printf "%.2f" .Report.AvgTTFTMs}}),
+            avgLatencyMs: parseFloat({{printf "%.2f" .Report.AvgLatencyMs}})
         };
 
         // Fill overview values
@@ -335,12 +356,33 @@
             backgroundColor: 'transparent',
             textStyle: { color: '#94a3b8' },
             legend: { textStyle: { color: '#94a3b8' } },
-            grid: { left: '8%', right: '5%', top: '15%', bottom: '12%' }
+            grid: { left: '8%', right: '5%', top: '15%', bottom: '18%' }
         };
 
-        function getWindowLabels() {
-            return snapshots.map((s, i) => '#' + i);
+        // Generate time labels from snapshot start_time
+        function getTimeLabels() {
+            return snapshots.map(s => {
+                const t = new Date(s.start_time);
+                const h = t.getHours().toString().padStart(2, '0');
+                const m = t.getMinutes().toString().padStart(2, '0');
+                return h + ':' + m;
+            });
         }
+
+        // Common data zoom for large datasets
+        function getDataZoom() {
+            if (snapshots.length <= 60) return [];
+            return [
+                { type: 'inside', start: 0, end: 100 },
+                { type: 'slider', start: 0, end: 100, height: 20, bottom: 5,
+                  borderColor: 'transparent', backgroundColor: 'rgba(99,102,241,0.1)',
+                  fillerColor: 'rgba(99,102,241,0.2)', handleStyle: { color: '#6366f1' },
+                  textStyle: { color: '#64748b' } }
+            ];
+        }
+
+        const timeLabels = getTimeLabels();
+        const dataZoom = getDataZoom();
 
         // Latency Trend Chart
         (function() {
@@ -348,13 +390,14 @@
             chart.setOption(Object.assign({}, chartTheme, {
                 tooltip: { trigger: 'axis' },
                 legend: { data: ['Avg', 'P50', 'P95', 'P99'], textStyle: { color: '#94a3b8' } },
-                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
+                dataZoom: dataZoom,
+                xAxis: { type: 'category', data: timeLabels, axisLabel: { color: '#64748b' } },
                 yAxis: { type: 'value', name: 'ms', axisLabel: { color: '#64748b' } },
                 series: [
-                    { name: 'Avg', type: 'line', smooth: true, data: snapshots.map(s => s.avg_latency_ms.toFixed(0)), itemStyle: { color: '#6366f1' } },
-                    { name: 'P50', type: 'line', smooth: true, data: snapshots.map(s => s.p50_latency_ms), itemStyle: { color: '#22d3ee' } },
-                    { name: 'P95', type: 'line', smooth: true, data: snapshots.map(s => s.p95_latency_ms), itemStyle: { color: '#f59e0b' } },
-                    { name: 'P99', type: 'line', smooth: true, data: snapshots.map(s => s.p99_latency_ms), itemStyle: { color: '#f43f5e' } }
+                    { name: 'Avg', type: 'line', smooth: true, data: snapshots.map(s => s.avg_latency_ms.toFixed(0)), itemStyle: { color: '#6366f1' }, symbol: 'none' },
+                    { name: 'P50', type: 'line', smooth: true, data: snapshots.map(s => s.p50_latency_ms), itemStyle: { color: '#22d3ee' }, symbol: 'none' },
+                    { name: 'P95', type: 'line', smooth: true, data: snapshots.map(s => s.p95_latency_ms), itemStyle: { color: '#f59e0b' }, symbol: 'none' },
+                    { name: 'P99', type: 'line', smooth: true, data: snapshots.map(s => s.p99_latency_ms), itemStyle: { color: '#f43f5e' }, symbol: 'none' }
                 ]
             }));
             window.addEventListener('resize', () => chart.resize());
@@ -366,13 +409,14 @@
             chart.setOption(Object.assign({}, chartTheme, {
                 tooltip: { trigger: 'axis' },
                 legend: { data: ['Avg', 'P50', 'P95', 'P99'], textStyle: { color: '#94a3b8' } },
-                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
+                dataZoom: dataZoom,
+                xAxis: { type: 'category', data: timeLabels, axisLabel: { color: '#64748b' } },
                 yAxis: { type: 'value', name: 'ms', axisLabel: { color: '#64748b' } },
                 series: [
-                    { name: 'Avg', type: 'line', smooth: true, data: snapshots.map(s => s.avg_ttft_ms.toFixed(0)), itemStyle: { color: '#6366f1' } },
-                    { name: 'P50', type: 'line', smooth: true, data: snapshots.map(s => s.p50_ttft_ms), itemStyle: { color: '#22d3ee' } },
-                    { name: 'P95', type: 'line', smooth: true, data: snapshots.map(s => s.p95_ttft_ms), itemStyle: { color: '#f59e0b' } },
-                    { name: 'P99', type: 'line', smooth: true, data: snapshots.map(s => s.p99_ttft_ms), itemStyle: { color: '#f43f5e' } }
+                    { name: 'Avg', type: 'line', smooth: true, data: snapshots.map(s => s.avg_ttft_ms.toFixed(0)), itemStyle: { color: '#6366f1' }, symbol: 'none' },
+                    { name: 'P50', type: 'line', smooth: true, data: snapshots.map(s => s.p50_ttft_ms), itemStyle: { color: '#22d3ee' }, symbol: 'none' },
+                    { name: 'P95', type: 'line', smooth: true, data: snapshots.map(s => s.p95_ttft_ms), itemStyle: { color: '#f59e0b' }, symbol: 'none' },
+                    { name: 'P99', type: 'line', smooth: true, data: snapshots.map(s => s.p99_ttft_ms), itemStyle: { color: '#f43f5e' }, symbol: 'none' }
                 ]
             }));
             window.addEventListener('resize', () => chart.resize());
@@ -383,13 +427,34 @@
             const chart = echarts.init(document.getElementById('chart-rps'));
             chart.setOption(Object.assign({}, chartTheme, {
                 tooltip: { trigger: 'axis' },
-                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
+                dataZoom: dataZoom,
+                xAxis: { type: 'category', data: timeLabels, axisLabel: { color: '#64748b' } },
                 yAxis: { type: 'value', name: 'req/s', axisLabel: { color: '#64748b' } },
                 series: [{
                     name: 'RPS', type: 'line', smooth: true,
                     data: snapshots.map(s => s.rps.toFixed(2)),
                     itemStyle: { color: '#10b981' },
-                    areaStyle: { color: 'rgba(16,185,129,0.15)' }
+                    areaStyle: { color: 'rgba(16,185,129,0.15)' },
+                    symbol: 'none'
+                }]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // Token Throughput Trend Chart
+        (function() {
+            const chart = echarts.init(document.getElementById('chart-throughput'));
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                dataZoom: dataZoom,
+                xAxis: { type: 'category', data: timeLabels, axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: 'tokens/s', axisLabel: { color: '#64748b' } },
+                series: [{
+                    name: 'Token Throughput', type: 'line', smooth: true,
+                    data: snapshots.map(s => s.token_throughput.toFixed(1)),
+                    itemStyle: { color: '#a855f7' },
+                    areaStyle: { color: 'rgba(168,85,247,0.15)' },
+                    symbol: 'none'
                 }]
             }));
             window.addEventListener('resize', () => chart.resize());
@@ -400,13 +465,15 @@
             const chart = echarts.init(document.getElementById('chart-success'));
             chart.setOption(Object.assign({}, chartTheme, {
                 tooltip: { trigger: 'axis', formatter: '{b}: {c}%' },
-                xAxis: { type: 'category', data: getWindowLabels(), axisLabel: { color: '#64748b' } },
-                yAxis: { type: 'value', name: '%', min: 0, max: 100, axisLabel: { color: '#64748b' } },
+                dataZoom: dataZoom,
+                xAxis: { type: 'category', data: timeLabels, axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: '%', min: function(value) { return Math.max(0, Math.floor(value.min - 1)); }, max: 100, axisLabel: { color: '#64748b' } },
                 series: [{
                     name: 'Success Rate', type: 'line', smooth: true,
                     data: snapshots.map(s => (s.success_rate * 100).toFixed(1)),
                     itemStyle: { color: '#6366f1' },
                     areaStyle: { color: 'rgba(99,102,241,0.15)' },
+                    symbol: 'none',
                     markLine: {
                         silent: true,
                         data: [{ yAxis: 99, lineStyle: { color: '#f59e0b', type: 'dashed' }, label: { formatter: '99%' } }]
@@ -416,46 +483,114 @@
             window.addEventListener('resize', () => chart.resize());
         })();
 
-        // CPU & Memory Chart
+        // Error Trend per Window Chart
         (function() {
-            if (!metricsTimeline || metricsTimeline.length === 0) {
-                document.getElementById('chart-cpu-mem').parentElement.style.display = 'none';
-                return;
-            }
-            const chart = echarts.init(document.getElementById('chart-cpu-mem'));
-            const labels = metricsTimeline.map((m, i) => {
-                const t = new Date(m.timestamp);
-                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
-            });
+            const chart = echarts.init(document.getElementById('chart-errors-trend'));
+            const hasErrors = snapshots.some(s => s.failure > 0);
             chart.setOption(Object.assign({}, chartTheme, {
                 tooltip: { trigger: 'axis' },
-                legend: { data: ['CPU %', 'Memory %'], textStyle: { color: '#94a3b8' } },
-                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
-                yAxis: { type: 'value', name: '%', min: 0, max: 100, axisLabel: { color: '#64748b' } },
-                series: [
-                    { name: 'CPU %', type: 'line', smooth: true, data: metricsTimeline.map(m => m.cpu_percent.toFixed(1)), itemStyle: { color: '#6366f1' } },
-                    { name: 'Memory %', type: 'line', smooth: true, data: metricsTimeline.map(m => m.mem_percent.toFixed(1)), itemStyle: { color: '#22d3ee' } }
-                ]
+                dataZoom: dataZoom,
+                xAxis: { type: 'category', data: timeLabels, axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: 'failures', minInterval: 1, axisLabel: { color: '#64748b' } },
+                series: [{
+                    name: 'Failures', type: 'bar',
+                    data: snapshots.map(s => s.failure),
+                    itemStyle: { color: hasErrors ? '#f43f5e' : '#374151', borderRadius: [3, 3, 0, 0] },
+                    emphasis: { itemStyle: { color: '#fb7185' } }
+                }]
             }));
             window.addEventListener('resize', () => chart.resize());
         })();
 
-        // GPU Utilization & Memory Chart
+        // CPU Chart
         (function() {
             if (!metricsTimeline || metricsTimeline.length === 0) {
-                document.getElementById('chart-gpu').parentElement.style.display = 'none';
+                document.getElementById('chart-cpu').parentElement.style.display = 'none';
                 return;
             }
-            const hasGPU = metricsTimeline.some(m => m.gpu_metrics && m.gpu_metrics.length > 0);
-            if (!hasGPU) {
-                document.getElementById('chart-gpu').parentElement.style.display = 'none';
-                return;
-            }
-            const chart = echarts.init(document.getElementById('chart-gpu'));
-            const labels = metricsTimeline.map((m, i) => {
+            const chart = echarts.init(document.getElementById('chart-cpu'));
+            const labels = metricsTimeline.map(m => {
                 const t = new Date(m.timestamp);
-                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
+                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
             });
+            const metricsZoom = metricsTimeline.length > 120 ? [
+                { type: 'inside', start: 0, end: 100 },
+                { type: 'slider', start: 0, end: 100, height: 20, bottom: 5,
+                  borderColor: 'transparent', backgroundColor: 'rgba(99,102,241,0.1)',
+                  fillerColor: 'rgba(99,102,241,0.2)', handleStyle: { color: '#6366f1' },
+                  textStyle: { color: '#64748b' } }
+            ] : [];
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' },
+                dataZoom: metricsZoom,
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: '%', min: 0, axisLabel: { color: '#64748b' } },
+                series: [{
+                    name: 'CPU %', type: 'line', smooth: true,
+                    data: metricsTimeline.map(m => m.cpu_percent.toFixed(1)),
+                    itemStyle: { color: '#6366f1' },
+                    areaStyle: { color: 'rgba(99,102,241,0.15)' },
+                    symbol: 'none'
+                }]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // Memory Chart
+        (function() {
+            if (!metricsTimeline || metricsTimeline.length === 0) {
+                document.getElementById('chart-mem').parentElement.style.display = 'none';
+                return;
+            }
+            const chart = echarts.init(document.getElementById('chart-mem'));
+            const labels = metricsTimeline.map(m => {
+                const t = new Date(m.timestamp);
+                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+            });
+            const metricsZoom = metricsTimeline.length > 120 ? [
+                { type: 'inside', start: 0, end: 100 },
+                { type: 'slider', start: 0, end: 100, height: 20, bottom: 5,
+                  borderColor: 'transparent', backgroundColor: 'rgba(99,102,241,0.1)',
+                  fillerColor: 'rgba(99,102,241,0.2)', handleStyle: { color: '#6366f1' },
+                  textStyle: { color: '#64748b' } }
+            ] : [];
+            // Show memory in GB
+            const memGB = metricsTimeline.map(m => (m.mem_used_mb / 1024).toFixed(1));
+            chart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis', formatter: function(params) { return params[0].axisValue + '<br/>' + params[0].marker + ' Memory: ' + params[0].value + ' GB'; } },
+                dataZoom: metricsZoom,
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b' } },
+                yAxis: { type: 'value', name: 'GB', axisLabel: { color: '#64748b' } },
+                series: [{
+                    name: 'Memory (GB)', type: 'line', smooth: true,
+                    data: memGB,
+                    itemStyle: { color: '#22d3ee' },
+                    areaStyle: { color: 'rgba(34,211,238,0.15)' },
+                    symbol: 'none'
+                }]
+            }));
+            window.addEventListener('resize', () => chart.resize());
+        })();
+
+        // GPU Section: hide entirely if no GPU data
+        (function() {
+            const hasGPU = metricsTimeline && metricsTimeline.some(m => m.gpu_metrics && m.gpu_metrics.length > 0);
+            if (!hasGPU) {
+                document.getElementById('gpu-section').style.display = 'none';
+                return;
+            }
+
+            const labels = metricsTimeline.map(m => {
+                const t = new Date(m.timestamp);
+                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+            });
+            const gpuZoom = metricsTimeline.length > 120 ? [
+                { type: 'inside', start: 0, end: 100 },
+                { type: 'slider', start: 0, end: 100, height: 20, bottom: 5,
+                  borderColor: 'transparent', backgroundColor: 'rgba(99,102,241,0.1)',
+                  fillerColor: 'rgba(99,102,241,0.2)', handleStyle: { color: '#6366f1' },
+                  textStyle: { color: '#64748b' } }
+            ] : [];
 
             // Collect all GPU indices
             const gpuIndices = new Set();
@@ -463,135 +598,74 @@
                 if (m.gpu_metrics) m.gpu_metrics.forEach(g => gpuIndices.add(g.index));
             });
 
-            const series = [];
+            // GPU Utilization & Memory Chart
+            const gpuChart = echarts.init(document.getElementById('chart-gpu'));
+            const gpuSeries = [];
+            const utilColors = ['#6366f1', '#8b5cf6', '#a855f7', '#ec4899'];
+            const memColors = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
             gpuIndices.forEach(idx => {
-                const colors = ['#6366f1', '#8b5cf6', '#a855f7', '#ec4899'];
-                const memColors = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
-                series.push({
-                    name: 'GPU' + idx + ' Util%',
-                    type: 'line', smooth: true,
-                    data: metricsTimeline.map(m => {
-                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
-                        return g ? g.util_percent.toFixed(1) : null;
-                    }),
-                    itemStyle: { color: colors[idx % colors.length] }
+                gpuSeries.push({
+                    name: 'GPU' + idx + ' Util%', type: 'line', smooth: true, symbol: 'none',
+                    data: metricsTimeline.map(m => { const g = (m.gpu_metrics || []).find(g => g.index === idx); return g ? g.util_percent.toFixed(1) : null; }),
+                    itemStyle: { color: utilColors[idx % utilColors.length] }
                 });
-                series.push({
-                    name: 'GPU' + idx + ' Mem%',
-                    type: 'line', smooth: true,
-                    data: metricsTimeline.map(m => {
-                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
-                        return g ? g.mem_percent.toFixed(1) : null;
-                    }),
-                    itemStyle: { color: memColors[idx % memColors.length] },
-                    lineStyle: { type: 'dashed' }
+                gpuSeries.push({
+                    name: 'GPU' + idx + ' Mem%', type: 'line', smooth: true, symbol: 'none',
+                    data: metricsTimeline.map(m => { const g = (m.gpu_metrics || []).find(g => g.index === idx); return g ? g.mem_percent.toFixed(1) : null; }),
+                    itemStyle: { color: memColors[idx % memColors.length] }, lineStyle: { type: 'dashed' }
                 });
             });
-
-            chart.setOption(Object.assign({}, chartTheme, {
-                tooltip: { trigger: 'axis' },
-                legend: { data: series.map(s => s.name), textStyle: { color: '#94a3b8' } },
-                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
+            gpuChart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' }, dataZoom: gpuZoom,
+                legend: { data: gpuSeries.map(s => s.name), textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b' } },
                 yAxis: { type: 'value', name: '%', min: 0, max: 100, axisLabel: { color: '#64748b' } },
-                series: series
+                series: gpuSeries
             }));
-            window.addEventListener('resize', () => chart.resize());
-        })();
+            window.addEventListener('resize', () => gpuChart.resize());
 
-        // GPU Temperature Chart
-        (function() {
-            if (!metricsTimeline || metricsTimeline.length === 0) {
-                document.getElementById('chart-gpu-temp').parentElement.style.display = 'none';
-                return;
-            }
-            const hasGPU = metricsTimeline.some(m => m.gpu_metrics && m.gpu_metrics.length > 0);
-            if (!hasGPU) {
-                document.getElementById('chart-gpu-temp').parentElement.style.display = 'none';
-                return;
-            }
-            const chart = echarts.init(document.getElementById('chart-gpu-temp'));
-            const labels = metricsTimeline.map((m) => {
-                const t = new Date(m.timestamp);
-                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
-            });
-
-            const gpuIndices = new Set();
-            metricsTimeline.forEach(m => {
-                if (m.gpu_metrics) m.gpu_metrics.forEach(g => gpuIndices.add(g.index));
-            });
-
-            const series = [];
-            const colors = ['#f43f5e', '#f59e0b', '#10b981', '#6366f1'];
+            // GPU Temperature Chart
+            const tempChart = echarts.init(document.getElementById('chart-gpu-temp'));
+            const tempSeries = [];
+            const tempColors = ['#f43f5e', '#f59e0b', '#10b981', '#6366f1'];
             gpuIndices.forEach(idx => {
-                series.push({
-                    name: 'GPU' + idx + ' °C',
-                    type: 'line', smooth: true,
-                    data: metricsTimeline.map(m => {
-                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
-                        return g ? g.temp_c : null;
-                    }),
-                    itemStyle: { color: colors[idx % colors.length] }
+                tempSeries.push({
+                    name: 'GPU' + idx + ' °C', type: 'line', smooth: true, symbol: 'none',
+                    data: metricsTimeline.map(m => { const g = (m.gpu_metrics || []).find(g => g.index === idx); return g ? g.temp_c : null; }),
+                    itemStyle: { color: tempColors[idx % tempColors.length] }
                 });
             });
-
-            chart.setOption(Object.assign({}, chartTheme, {
-                tooltip: { trigger: 'axis' },
-                legend: { data: series.map(s => s.name), textStyle: { color: '#94a3b8' } },
-                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
+            tempChart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' }, dataZoom: gpuZoom,
+                legend: { data: tempSeries.map(s => s.name), textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b' } },
                 yAxis: { type: 'value', name: '°C', axisLabel: { color: '#64748b' } },
-                series: series
+                series: tempSeries
             }));
-            window.addEventListener('resize', () => chart.resize());
-        })();
+            window.addEventListener('resize', () => tempChart.resize());
 
-        // GPU Power Chart
-        (function() {
-            if (!metricsTimeline || metricsTimeline.length === 0) {
-                document.getElementById('chart-gpu-power').parentElement.style.display = 'none';
-                return;
-            }
-            const hasGPU = metricsTimeline.some(m => m.gpu_metrics && m.gpu_metrics.length > 0);
-            if (!hasGPU) {
-                document.getElementById('chart-gpu-power').parentElement.style.display = 'none';
-                return;
-            }
-            const chart = echarts.init(document.getElementById('chart-gpu-power'));
-            const labels = metricsTimeline.map((m) => {
-                const t = new Date(m.timestamp);
-                return t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
-            });
-
-            const gpuIndices = new Set();
-            metricsTimeline.forEach(m => {
-                if (m.gpu_metrics) m.gpu_metrics.forEach(g => gpuIndices.add(g.index));
-            });
-
-            const series = [];
-            const colors = ['#f59e0b', '#6366f1', '#10b981', '#f43f5e'];
+            // GPU Power Chart
+            const powerChart = echarts.init(document.getElementById('chart-gpu-power'));
+            const powerSeries = [];
+            const powerColors = ['#f59e0b', '#6366f1', '#10b981', '#f43f5e'];
             gpuIndices.forEach(idx => {
-                series.push({
-                    name: 'GPU' + idx + ' W',
-                    type: 'line', smooth: true,
-                    data: metricsTimeline.map(m => {
-                        const g = (m.gpu_metrics || []).find(g => g.index === idx);
-                        return g ? g.power_w : null;
-                    }),
-                    itemStyle: { color: colors[idx % colors.length] },
-                    areaStyle: { opacity: 0.1 }
+                powerSeries.push({
+                    name: 'GPU' + idx + ' W', type: 'line', smooth: true, symbol: 'none',
+                    data: metricsTimeline.map(m => { const g = (m.gpu_metrics || []).find(g => g.index === idx); return g ? g.power_w : null; }),
+                    itemStyle: { color: powerColors[idx % powerColors.length] }, areaStyle: { opacity: 0.1 }
                 });
             });
-
-            chart.setOption(Object.assign({}, chartTheme, {
-                tooltip: { trigger: 'axis' },
-                legend: { data: series.map(s => s.name), textStyle: { color: '#94a3b8' } },
-                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b', rotate: 30 } },
+            powerChart.setOption(Object.assign({}, chartTheme, {
+                tooltip: { trigger: 'axis' }, dataZoom: gpuZoom,
+                legend: { data: powerSeries.map(s => s.name), textStyle: { color: '#94a3b8' } },
+                xAxis: { type: 'category', data: labels, axisLabel: { color: '#64748b' } },
                 yAxis: { type: 'value', name: 'W', axisLabel: { color: '#64748b' } },
-                series: series
+                series: powerSeries
             }));
-            window.addEventListener('resize', () => chart.resize());
+            window.addEventListener('resize', () => powerChart.resize());
         })();
 
-        // Fill snapshots table
+        // Fill snapshots table (show time instead of index)
         (function() {
             const tbody = document.getElementById('snapshots-table');
             snapshots.forEach(s => {
@@ -599,9 +673,11 @@
                 let srClass = 'good';
                 if (sr < 99) srClass = 'warn';
                 if (sr < 95) srClass = 'bad';
+                const t = new Date(s.start_time);
+                const timeStr = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>#${s.window_index}</td>
+                    <td>${timeStr}</td>
                     <td>${s.total_requests}</td>
                     <td><span class="status-badge ${srClass}">${sr}%</span></td>
                     <td>${s.avg_ttft_ms.toFixed(0)}ms</td>
