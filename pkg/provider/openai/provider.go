@@ -34,13 +34,19 @@ func (p *Provider) Name() string {
 	return "openai"
 }
 
+// ChatTemplateKwargs holds template-level parameters like enabling/disabling thinking.
+type ChatTemplateKwargs struct {
+	EnableThinking bool `json:"enable_thinking"`
+}
+
 // ChatRequest represents the OpenAI chat completion request.
 type ChatRequest struct {
-	Model         string                 `json:"model"`
-	Messages      []workload.ChatMessage `json:"messages"`
-	MaxTokens     int                    `json:"max_tokens,omitempty"`
-	Stream        bool                   `json:"stream"`
-	StreamOptions *StreamOptions         `json:"stream_options,omitempty"`
+	Model              string                 `json:"model"`
+	Messages           []workload.ChatMessage `json:"messages"`
+	MaxTokens          int                    `json:"max_tokens,omitempty"`
+	Stream             bool                   `json:"stream"`
+	StreamOptions      *StreamOptions         `json:"stream_options,omitempty"`
+	ChatTemplateKwargs *ChatTemplateKwargs    `json:"chat_template_kwargs,omitempty"`
 }
 
 // StreamOptions configures stream behavior.
@@ -94,6 +100,10 @@ func (p *Provider) StreamChat(ctx context.Context, cfg *config.GlobalConfig, inp
 		StreamOptions: &StreamOptions{
 			IncludeUsage: true, // Request usage info in stream (for vLLM compatibility)
 		},
+	}
+
+	if cfg.DisableThinking {
+		reqBody.ChatTemplateKwargs = &ChatTemplateKwargs{EnableThinking: false}
 	}
 
 	jsonBody, err := json.Marshal(reqBody)

@@ -33,6 +33,9 @@ type GlobalConfig struct {
 
 	// Debug Options
 	Verbose bool // Enable verbose logging of requests/responses
+
+	// Model Behavior
+	DisableThinking bool // Disable thinking/reasoning mode (sends chat_template_kwargs.enable_thinking=false)
 }
 
 // DefaultConfig returns a configuration with sensible defaults.

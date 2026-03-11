@@ -66,6 +66,9 @@ func main() {
 	// Debug Options
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging of LLM requests and responses")
 
+	// Model Behavior
+	flag.BoolVar(&cfg.DisableThinking, "no-thinking", false, "Disable thinking/reasoning mode (sends chat_template_kwargs.enable_thinking=false)")
+
 	// Full Test Mode
 	fullTest := flag.Bool("full-test", false, "Run complete test suite (benchmark + summary)")
 
@@ -271,6 +274,7 @@ func runFullTest(cfg *config.GlobalConfig) {
 	moderateCfg.InsecureTLS = cfg.InsecureTLS
 	moderateCfg.CACertPath = cfg.CACertPath
 	moderateCfg.Verbose = cfg.Verbose
+	moderateCfg.DisableThinking = cfg.DisableThinking
 
 	// Auto-generate output directory
 	modelName := cfg.ModelName
